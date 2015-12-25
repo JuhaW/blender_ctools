@@ -79,7 +79,7 @@ else:
     from . import vamath as vam
     from . import vawm
     from .unitsystem import UnitSystem
-from .utils import AddonPreferences
+from .utils import AddonPreferences, SpaceProperty
 
 
 # 他のModalHandlerが開始する度にRulerを再起動する
@@ -171,85 +171,31 @@ class RegionRuler_PG_Color(bpy.types.PropertyGroup):
         subtype='COLOR_GAMMA', size=4)
 
 
-def prop_get_space(sync=True):
-    if sync:
-        data.wm_sync()
-    area = bpy.context.area
-    if area and area.type in ('VIEW_3D', 'IMAGE_EDITOR'):
-        return area.spaces.active
-    else:
-        return None
-
-
-def data_space_value_get(name, sync=True):
-    """data.spaces[space.as_pointer()][name]を返す。"""
-    space = prop_get_space(sync)
-    if space:
-        ptr = space.as_pointer()
-        if ptr in data.spaces and name in data.spaces[ptr]:
-            return data.spaces[ptr][name]
-    return None
-
-
-def data_space_value_set(name, value, sync=True):
-    """data.spaces[space.as_pointer()][name] = value"""
-    space = prop_get_space(sync)
-    if space:
-        ptr = space.as_pointer()
-        if ptr in data.spaces:
-            data.spaces[ptr][name] = value
-            return True
-    return False
-
-
-def gen_enum_item_get(type_name, name):
-    def getter(self):
-        bpy_type = getattr(bpy.types, type_name)
-        prop = bpy_type.bl_rna.properties[name]
-        identifier = data_space_value_get(name)
-        if identifier is None:
-            identifier = prop.default
-        for item in prop.enum_items:
-            if item.identifier == identifier:
-                return item.value
-        return 0
-    return getter
-
-
-def gen_enum_item_set(type_name, name):
-    def setter(self, value):
-        bpy_type = getattr(bpy.types, type_name)
-        prop = bpy_type.bl_rna.properties[name]
-        for item in prop.enum_items:
-            if item.value == value:
-                data_space_value_set(name, item.identifier)
-                return
-    return setter
-
-
 class RegionRuler_PG(bpy.types.PropertyGroup):
     """WindowManager.region_ruler"""
-    def _enable_get(self):
-        return data_space_value_get('enable') or False
-
-    def _enable_set(self, value):
-        data_space_value_set('enable', value)
-
     def _enabled_update(self, context):
         if not data.ignore_operator_call:
             if self.enable:
                 if bpy.ops.view3d.region_ruler.poll():  # ランタイムエラー回避
                     bpy.ops.view3d.region_ruler('INVOKE_DEFAULT', False)
-            write_text_object()
         redraw_regions(context)
 
-    enable = vap.BP('Enable', get=_enable_get, set=_enable_set,
+    enable = vap.BP('Enable',
                     update=_enabled_update)
-
-    measure = vap.BP('Measure', default=False)
 
     def _update_redraw(self, context):
         redraw_regions(context)
+
+    _measure = 0
+
+    def _measure_get(self):
+        return self.__class__._measure
+
+    def _measure_set(self, value):
+        self.__class__._measure = value
+
+    measure = vap.BP('Measure',get=_measure_get, set=_measure_set,
+                     update=_update_redraw)
 
     origin_type = vap.EP(
         'Origin Type',
@@ -259,8 +205,6 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
                ('view', 'View Center', 'View center'),
                ('custom', 'Custom', '')),
         default='scene',
-        get=gen_enum_item_get('RegionRuler_PG', 'origin_type'),
-        set=gen_enum_item_set('RegionRuler_PG', 'origin_type'),
         update=_update_redraw
     )
     image_editor_origin_type = vap.EP(
@@ -270,45 +214,21 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
                ('view', 'View Center', 'View center'),
                ('custom', 'Custom', '')),
         default='uv',
-        get=gen_enum_item_get('RegionRuler_PG', 'image_editor_origin_type'),
-        set=gen_enum_item_set('RegionRuler_PG', 'image_editor_origin_type'),
         update=_update_redraw
     )
-
-    def _origin_location_get(self):
-        value = data_space_value_get('origin_location')
-        if value is None:
-            value = Vector((0, 0, 0))
-        return value
-
-    def _origin_location_set(self, value):
-        data_space_value_set('origin_location', Vector(value))
 
     origin_location = vap.FVP(
         'Origin Location',
         default=(0, 0, 0),
         subtype='XYZ',
         unit='LENGTH',
-        get=_origin_location_get,
-        set=_origin_location_set,
         update=_update_redraw)
-
-    def _image_editor_origin_location_get(self):
-        value = data_space_value_get('image_editor_origin_location')
-        if value is None:
-            value = Vector((0, 0))
-        return value
-
-    def _image_editor_origin_location_set(self, value):
-        data_space_value_set('image_editor_origin_location', Vector(value))
 
     image_editor_origin_location = vap.FVP(
         'Origin Location',
         default=(0, 0),
         subtype='XYZ',
         unit='LENGTH',
-        get=_image_editor_origin_location_get,
-        set=_image_editor_origin_location_set,
         update=_update_redraw)
 
     unit = vap.EP(
@@ -318,8 +238,6 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
                ('metric', 'Metric', ''),
                ('imperial', 'Imperial', '')),  # imperialへの対応には問題が残る
         default='auto',
-        get=gen_enum_item_get('RegionRuler_PG', 'unit'),
-        set=gen_enum_item_set('RegionRuler_PG', 'unit'),
         update=_update_redraw)
 
     image_editor_unit = vap.EP(
@@ -327,8 +245,6 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
         items=(('pixel', 'Pixel', ''),
                ('uv', 'UV', '')),
         default='pixel',
-        get=gen_enum_item_get('RegionRuler_PG', 'image_editor_unit'),
-        set=gen_enum_item_set('RegionRuler_PG', 'image_editor_unit'),
         update=_update_redraw,
     )
 
@@ -338,9 +254,13 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
         items=(('view', 'View', 'View or Camera'),
                ('cursor', '3D Cursor', '')),
         default='view',
-        get=gen_enum_item_get('RegionRuler_PG', 'view_depth'),
-        set=gen_enum_item_set('RegionRuler_PG', 'view_depth'),
         update=_update_redraw)
+
+
+space_prop = SpaceProperty(
+    [bpy.types.SpaceView3D, 'region_ruler', RegionRuler_PG]
+
+)
 
 
 class RegionRulerPreferences(
@@ -420,16 +340,9 @@ class RegionRulerPreferences(
         'Use Fill',
         description='Fill text box',
         default=True)
-    write_text_object = vap.BP(
-        'Save Space Properties',
-        'Save as TextObject',
-        default=True)
     text_object_name = vap.SP(
         'TextObject Name',
         default='region_ruler.config')
-    auto_run = vap.BP(
-        'Auto Run',
-        default=True)
 
     draw_cross_cursor = vap.BP(
         'Cross Cursor',
@@ -489,10 +402,6 @@ class RegionRulerPreferences(
         # self.draw_property('image_editor_unit', col, row=True, expand=True)
         # self.draw_property('view_depth', col)
         self.draw_property('use_fill', col)
-        self.draw_property('write_text_object', col)
-        prop = self.draw_property('text_object_name', col)
-        prop.active = self.write_text_object
-        self.draw_property('auto_run', col)
         self.draw_property('auto_save', col)
 
 
@@ -513,7 +422,7 @@ def get_widget_unit(context):
 
 def get_view_location(context):
     prefs = RegionRulerPreferences.get_prefs()
-    ruler_settings = context.window_manager.region_ruler
+    ruler_settings = space_prop.get(context.space_data)
     region = context.region
     rv3d = context.region_data
     if ruler_settings.view_depth == 'cursor':
@@ -632,7 +541,7 @@ class Data:
         event = data.events[context.window.as_pointer()]
         region = context.region
         sx, sy = region.width, region.height
-        ruler_settings = context.window_manager.region_ruler
+        ruler_settings = space_prop.get(context.space_data)
 
         if context.area.type == 'VIEW_3D':
             v3d = context.space_data
@@ -776,7 +685,7 @@ def is_modal_needed(context):
     """偽を返すならmodalオペレータを終了してもいい。
     """
     wm = context.window_manager
-    prop = wm.region_ruler
+    prop = space_prop.get(context.space_data)
     prefs = RegionRulerPreferences.get_prefs()
     if data.simple_measure or prop.measure:
         return True
@@ -1641,7 +1550,7 @@ def draw_unit_box(context, use_fill):
 def draw_measure(context, event):
     """ポイントが空の場合、深度は3DカーソルかViewLocationを使い、
     ポイントの続きの場合はその深度に合わせる。"""
-    ruler_settings = context.window_manager.region_ruler
+    ruler_settings = space_prop.get(context.space_data)
     running_measure = ruler_settings.measure
     prefs = RegionRulerPreferences.get_prefs()
     region = context.region
@@ -1955,7 +1864,7 @@ def draw_measure(context, event):
 
 
 def draw_cross_cursor(context, event):
-    running_measure = context.window_manager.region_ruler.measure
+    running_measure = space_prop.get(context.space_data)
     prefs = RegionRulerPreferences.get_prefs()
     if not data.is_inside:
         return
@@ -2086,7 +1995,7 @@ def draw_mouse_coordinates_lower_right(context, event, use_fill):
 
 def draw_mouse_coordinates(context, event, use_fill):
     wm = context.window_manager
-    ruler_settings = wm.region_ruler
+    ruler_settings = space_prop.get(context.space_data)
     running_measure = ruler_settings.measure
     prefs = RegionRulerPreferences.get_prefs()
     # data.mcbox_x, data.ymcboxの計算だけは必要なので
@@ -2220,7 +2129,7 @@ def draw_callback(context):
     #       context.screen.name, context.area.as_pointer(), context.region.id))
     wm = context.window_manager
     window = context.window
-    prop = wm.region_ruler
+    prop = space_prop.get(context.space_data)
     prefs = RegionRulerPreferences.get_prefs()
     ptr = window.as_pointer()
 
@@ -2232,7 +2141,6 @@ def draw_callback(context):
                 bpy.ops.view3d.region_ruler('INVOKE_DEFAULT',
                                             get_event_only=True)
 
-    # wm.region_ruler.enableはspace_data毎に値が切り替わる
     if not prop.enable:
         return
 
@@ -2355,7 +2263,8 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
     def modal_measure(self, context, event):
         prefs = RegionRulerPreferences.get_prefs()
         wm = context.window_manager
-        running_measure = wm.region_ruler.measure
+        prop = space_prop.get(context.space_data)
+        running_measure = prop.measure
 
         retval = {'PASS_THROUGH'}
         do_redraw = do_redraw_panel = False
@@ -2397,7 +2306,7 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
             mco = (event.mouse_x - region.x, event.mouse_y - region.y)
             if running_measure or data.simple_measure:
                 if event.type == 'ESC' and event.value == 'PRESS':
-                    wm.region_ruler.measure = False
+                    prop.measure = False
                     data.measure_points.clear()
                     do_redraw = True
                     do_redraw_panel = True
@@ -2645,7 +2554,7 @@ class VIEW3D_PT_region_ruler_base:
 
     def draw(self, context):
         wm = context.window_manager
-        ruler_settings = wm.region_ruler
+        ruler_settings = space_prop.get(context.space_data)
 
         layout = self.layout
 
@@ -2690,14 +2599,11 @@ class VIEW3D_PT_region_ruler_base:
         sub.operator('view3d.region_ruler', text='Run')
         sub.operator('view3d.region_ruler_terminate', text='Kill')
 
-
     def draw_header(self, context):
         # draw関数の中では一部のプロパティの変更が効かないので
         # sync_spacesやget_settings(no_add=False)を実行しない。
-        wm = context.window_manager
-        ruler_settings = wm.region_ruler
+        ruler_settings = space_prop.get(context.space_data)
         self.layout.prop(ruler_settings, 'enable', text='')
-        pass
 
 
 class VIEW3D_PT_region_ruler(VIEW3D_PT_region_ruler_base, bpy.types.Panel):
@@ -2795,40 +2701,8 @@ def auto_save(context):
 ###############################################################################
 # Save / Load / Register
 ###############################################################################
-def write_text_object():
-    """save時とenableを更新した時"""
-    # data -> Text Object
-    prefs = RegionRulerPreferences.get_prefs()
-    if not prefs.write_text_object:
-        return
-    text_object_name = prefs.text_object_name
-    if text_object_name in bpy.data.texts:
-        text = bpy.data.texts[text_object_name]
-        text.clear()
-        logger.info("Update TextObject '{}'".format(text_object_name))
-    else:
-        logger.info("Create TextObject '{}'".format(text_object_name))
-        text = bpy.data.texts.new(text_object_name)
-    d = {'props': list(data.spaces.values()),
-         'running': bool(data.operators)}
-    text.write(pprint.pformat(d))
-
-
-@persistent
-def save_pre_handler(dummy):
-    """設定ファイル及びTextオブジェクトへ書き込み"""
-    logger.debug('Save Pre')
-    data.wm_sync()
-    write_text_object()
-
-
 @persistent
 def load_pre_handler(dummy):
-    """File -> Quit
-    Error: Not freed memory blocks: 1
-
-    (ﾉ ﾟДﾟ)ﾉ ~┻━┻
-    """
     logger.debug('Load Pre')
     draw_handler_remove()
 
@@ -2841,11 +2715,11 @@ def load_pre_handler(dummy):
     data.mouse_coords.clear()
     data.exit_waiting.clear()
 
+    RegionRuler_PG._measure = 0
+
 
 @persistent
 def load_post_handler(dummy):
-    """設定ファイル及びTextオブジェクトを読み取り、wm.region_rulerを更新。
-    起動時にも呼ばれる(startup.blendを読み込むから？)。"""
     logger.debug('Load Post')
 
     # 読み込み時にAutoSaveのタイマーリセット
@@ -2853,33 +2727,11 @@ def load_post_handler(dummy):
 
     data.wm_sync()
 
-    # Text Object -> data
-    running = False
-    prefs = RegionRulerPreferences.get_prefs()
-    if prefs.write_text_object and prefs.text_object_name in bpy.data.texts:
-        text = bpy.data.texts[prefs.text_object_name]
-        try:
-            d = eval(text.as_string())
-        except:
-            d = None
-        if d and isinstance(d, dict):
-            logger.debug("Read TextObject '{}'".format(prefs.text_object_name))
-            running = d.get('running', False)
-            props = d.get('props', [])
-            for address, value in zip(data.spaces, props):
-                if isinstance(value, bool):  # 2.2.0のデータを変換
-                    value = {'enable': value}
-                if value['enable']:
-                    running = True
-                data.spaces[address] = value
-    elif prefs.auto_run:
-        running = True
-        for address in data.spaces:
-            value = {'enable': True}
-            data.spaces[address] = value
-
-    # draw_callbackを追加
-    if running:
+    add_callback = False
+    for prop in space_prop.get_all():
+        if prop.enable:
+            add_callback = True
+    if add_callback:
         draw_handler_add(bpy.context)
 
 
@@ -2943,8 +2795,7 @@ def register():
     # bpy.utils.register_module(__name__)
     for cls in classes:
         bpy.utils.register_class(cls)
-    bpy.types.WindowManager.region_ruler = \
-        vap.PP('RegionRuler_PG', type=RegionRuler_PG)
+    space_prop.register()
 
     bpy.types.Event.mco = property(event_mco_get)
     bpy.types.Event.mco_prev = property(event_mco_prev_get)
@@ -2952,7 +2803,6 @@ def register():
     bpy.types.Event.mco_region_mod = property(event_mco_region_mod_get)
 
     # Add handlers
-    bpy.app.handlers.save_pre.append(save_pre_handler)
     bpy.app.handlers.load_pre.append(load_pre_handler)
     bpy.app.handlers.load_post.append(load_post_handler)
 
@@ -2969,26 +2819,11 @@ def unregister():
     draw_handler_remove()
 
     prefs = RegionRulerPreferences.get_prefs()
-    if prefs.write_text_object and prefs.text_object_name in bpy.data.texts:
-        bpy.data.texts.remove(bpy.data.texts[prefs.text_object_name])
 
-    # bpy.utils.unregister_module(__name__)
-    for cls in classes:
+    space_prop.unregister()
+    for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
 
-    # Delete attributes and properties
-    # WindowManager.region_ruler
-    wm = bpy.context.window_manager
-    if wm.get('region_ruler'):
-        del wm['region_ruler']
-    try:
-        del wm.region_ruler
-    except AttributeError:
-        pass
-    try:
-        del bpy.types.WindowManager.region_ruler
-    except AttributeError:
-        pass
     # Event.mco, Event.mco_region
     for attr in ('mco', 'mco_prev', 'mco_region'):
         try:
@@ -2997,7 +2832,6 @@ def unregister():
             pass
 
     # Remove handlers
-    bpy.app.handlers.save_pre.remove(save_pre_handler)
     bpy.app.handlers.load_pre.remove(load_pre_handler)
     bpy.app.handlers.load_post.remove(load_post_handler)
 
