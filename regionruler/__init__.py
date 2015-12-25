@@ -259,7 +259,8 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
 
 
 space_prop = SpaceProperty(
-    [bpy.types.SpaceView3D, 'region_ruler', RegionRuler_PG]
+    [bpy.types.SpaceView3D, 'region_ruler', RegionRuler_PG],
+    [bpy.types.SpaceImageEditor, 'region_ruler', RegionRuler_PG]
 
 )
 
@@ -423,7 +424,7 @@ def get_widget_unit(context):
 
 def get_view_location(context):
     prefs = RegionRulerPreferences.get_prefs()
-    ruler_settings = space_prop.get(context.space_data)
+    ruler_settings = space_prop.get(context.space_data, 'region_ruler')
     region = context.region
     rv3d = context.region_data
     if ruler_settings.view_depth == 'cursor':
@@ -542,7 +543,7 @@ class Data:
         event = data.events[context.window.as_pointer()]
         region = context.region
         sx, sy = region.width, region.height
-        ruler_settings = space_prop.get(context.space_data)
+        ruler_settings = space_prop.get(context.space_data, 'region_ruler')
 
         if context.area.type == 'VIEW_3D':
             v3d = context.space_data
@@ -686,9 +687,8 @@ def is_modal_needed(context):
     """偽を返すならmodalオペレータを終了してもいい。
     """
     wm = context.window_manager
-    prop = space_prop.get(context.space_data)
     prefs = RegionRulerPreferences.get_prefs()
-    if data.simple_measure or prop.measure:
+    if data.simple_measure or RegionRuler_PG._measure:
         return True
     if (prefs.draw_mouse_coordinates or prefs.use_simple_measure or
             prefs.draw_cross_cursor):
@@ -1551,7 +1551,7 @@ def draw_unit_box(context, use_fill):
 def draw_measure(context, event):
     """ポイントが空の場合、深度は3DカーソルかViewLocationを使い、
     ポイントの続きの場合はその深度に合わせる。"""
-    ruler_settings = space_prop.get(context.space_data)
+    ruler_settings = space_prop.get(context.space_data, 'region_ruler')
     running_measure = ruler_settings.measure
     prefs = RegionRulerPreferences.get_prefs()
     region = context.region
@@ -1865,7 +1865,7 @@ def draw_measure(context, event):
 
 
 def draw_cross_cursor(context, event):
-    running_measure = space_prop.get(context.space_data).measure
+    running_measure = RegionRuler_PG._measure
     prefs = RegionRulerPreferences.get_prefs()
     if not data.is_inside:
         return
@@ -1996,7 +1996,7 @@ def draw_mouse_coordinates_lower_right(context, event, use_fill):
 
 def draw_mouse_coordinates(context, event, use_fill):
     wm = context.window_manager
-    ruler_settings = space_prop.get(context.space_data)
+    ruler_settings = space_prop.get(context.space_data, 'region_ruler')
     running_measure = ruler_settings.measure
     prefs = RegionRulerPreferences.get_prefs()
     # data.mcbox_x, data.ymcboxの計算だけは必要なので
@@ -2130,7 +2130,7 @@ def draw_callback(context):
     #       context.screen.name, context.area.as_pointer(), context.region.id))
     wm = context.window_manager
     window = context.window
-    prop = space_prop.get(context.space_data)
+    prop = space_prop.get(context.space_data, 'region_ruler')
     prefs = RegionRulerPreferences.get_prefs()
     ptr = window.as_pointer()
 
@@ -2263,9 +2263,7 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
 
     def modal_measure(self, context, event):
         prefs = RegionRulerPreferences.get_prefs()
-        wm = context.window_manager
-        prop = space_prop.get(context.space_data)
-        running_measure = prop.measure
+        running_measure = RegionRuler_PG._measure
 
         retval = {'PASS_THROUGH'}
         do_redraw = do_redraw_panel = False
@@ -2307,7 +2305,7 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
             mco = (event.mouse_x - region.x, event.mouse_y - region.y)
             if running_measure or data.simple_measure:
                 if event.type == 'ESC' and event.value == 'PRESS':
-                    prop.measure = False
+                    RegionRuler_PG._measure = False
                     data.measure_points.clear()
                     do_redraw = True
                     do_redraw_panel = True
@@ -2555,7 +2553,7 @@ class VIEW3D_PT_region_ruler_base:
 
     def draw(self, context):
         wm = context.window_manager
-        ruler_settings = space_prop.get(context.space_data)
+        ruler_settings = space_prop.get(context.space_data, 'region_ruler')
 
         layout = self.layout
 
@@ -2603,7 +2601,7 @@ class VIEW3D_PT_region_ruler_base:
     def draw_header(self, context):
         # draw関数の中では一部のプロパティの変更が効かないので
         # sync_spacesやget_settings(no_add=False)を実行しない。
-        ruler_settings = space_prop.get(context.space_data)
+        ruler_settings = space_prop.get(context.space_data, 'region_ruler')
         self.layout.prop(ruler_settings, 'enable', text='')
 
 
@@ -2731,8 +2729,9 @@ def load_post_handler(dummy):
     add_callback = False
     for space in (space for screen in bpy.data.screens
                   for area in screen.areas
-                  for space in area.spaces if space.type == 'VIEW_3D'):
-        prop = space_prop.get(space)
+                  for space in area.spaces
+                  if space.type in {'VIEW_3D', 'IMAGE_EDITOR'}):
+        prop = space_prop.get(space, 'region_ruler')
         if prop.enable:
             add_callback = True
             break

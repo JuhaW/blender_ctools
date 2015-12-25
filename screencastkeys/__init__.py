@@ -805,7 +805,7 @@ class ModalHandlerManager:
 
 ###############################################################################
 def get_display_location(context):
-    pref = get_addon_preferences(context)
+    pref = ScreenCastKeysPreferences.get_prefs()
     mouse_size = pref.mouse_size
 
     regions = [ar for ar in context.area.regions if ar.type == 'WINDOW']
@@ -1006,7 +1006,7 @@ def get_shape_data(shape):
 
 def draw_mouse(context, shape, style, alpha):
     # shape and position
-    pref = get_addon_preferences(context)
+    pref = ScreenCastKeysPreferences.get_prefs()
     mouse_size = pref.mouse_size
     font_size = pref.font_size
 
@@ -1077,7 +1077,7 @@ def draw_mouse(context, shape, style, alpha):
 
 
 def draw_callback_px_text(cls, context):
-    pref = get_addon_preferences(context)
+    pref = ScreenCastKeysPreferences.get_prefs()
     if not mm.is_running(context):
         return
 
@@ -1160,7 +1160,7 @@ def draw_callback_px_text(cls, context):
 
 
 def draw_modifiers(cls, context, pos_x, pos_y):
-    pref = get_addon_preferences(context)
+    pref = ScreenCastKeysPreferences.get_prefs()
     font_color_r, font_color_g, font_color_b, font_color_alpha = pref.text_color
 
     keys = []
@@ -1198,7 +1198,7 @@ def draw_modifiers(cls, context, pos_x, pos_y):
 
 def draw_last_operator(context, pos_x, pos_y):
     wm = context.window_manager
-    pref = get_addon_preferences(context)
+    pref = ScreenCastKeysPreferences.get_prefs()
     font_color_r, font_color_g, font_color_b, font_color_alpha = pref.text_color
 
     if wm.operators:
@@ -1219,7 +1219,7 @@ def draw_last_operator(context, pos_x, pos_y):
 
 
 def draw_timer(cls, context, pos_x, pos_y):
-    pref = get_addon_preferences(context)
+    pref = ScreenCastKeysPreferences.get_prefs()
     # calculate overall time
     t = int(time.time() - cls.overall_time)
     overall_time = datetime.timedelta(seconds=t)
@@ -1235,7 +1235,7 @@ def draw_timer(cls, context, pos_x, pos_y):
 
 
 def draw_callback_px_box(cls, context, event_text):
-    pref = get_addon_preferences(context)
+    pref = ScreenCastKeysPreferences.get_prefs()
 
     if not mm.is_running(context):
         return
@@ -1306,7 +1306,7 @@ def key_to_text(event_type, mods, count):
 
 
 def make_event_text(cls, context):
-    pref = get_addon_preferences(context)
+    pref = ScreenCastKeysPreferences.get_prefs()
 
     # cleanup
     cur_time = time.time()
@@ -1434,7 +1434,7 @@ class ScreencastKeysStatus(bpy.types.Operator):
 
     @mm.modal
     def modal(self, context, event):
-        pref = get_addon_preferences(context)
+        pref = ScreenCastKeysPreferences.get_prefs()
 
         ignore_event = False
         if event.type in ('MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'):

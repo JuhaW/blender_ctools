@@ -191,7 +191,8 @@ class SpaceProperty:
         context = bpy.context
         for (st, attri, prop), (cls, wm_prop_name) in zip(
                 self.props, self.registered):
-            if st == space_type or not space_type and len(self.props) == 1:
+            if (st == space_type or issubclass(space_type, st) or
+                    not space_type and len(self.props) == 1):
                 if attri == attr or not attr and len(self.props) == 1:
                     seq = getattr(context.window_manager, wm_prop_name)
                     return seq
