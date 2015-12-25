@@ -181,6 +181,7 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
         redraw_regions(context)
 
     enable = vap.BP('Enable',
+                    default=True,
                     update=_enabled_update)
 
     def _update_redraw(self, context):
@@ -1864,7 +1865,7 @@ def draw_measure(context, event):
 
 
 def draw_cross_cursor(context, event):
-    running_measure = space_prop.get(context.space_data)
+    running_measure = space_prop.get(context.space_data).measure
     prefs = RegionRulerPreferences.get_prefs()
     if not data.is_inside:
         return
@@ -2728,9 +2729,14 @@ def load_post_handler(dummy):
     data.wm_sync()
 
     add_callback = False
-    for prop in space_prop.get_all():
+    for space in (space for screen in bpy.data.screens
+                  for area in screen.areas
+                  for space in area.spaces if space.type == 'VIEW_3D'):
+        prop = space_prop.get(space)
         if prop.enable:
             add_callback = True
+            break
+
     if add_callback:
         draw_handler_add(bpy.context)
 
