@@ -25,7 +25,7 @@ from decimal import Decimal
 D = Decimal
 from fractions import Fraction
 
-from . import utils as _utils
+from . import localutils_utils as _utils
 
 
 class UnitError(ValueError):

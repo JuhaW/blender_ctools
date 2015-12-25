@@ -24,7 +24,7 @@ import bgl
 
 from . import vagl
 from . import vaview3d as vav
-from . import units as localutils_units
+from . import localutils_units
 
 
 def _prop(attr):
