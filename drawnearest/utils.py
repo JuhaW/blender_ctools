@@ -101,6 +101,8 @@ class SpaceProperty:
         :param props: [[space_type, attr, prop], ...]
             [[文字列かbpy.types.Space, 文字列,
               bpy.props.***()かPropertyGroup], ...]
+            bpy.types.PropertyGroupを使う場合はあらかじめregister_class()で
+            登録しておく
         :type props: list[list]
         """
         self.props = [list(elem) for elem in props]
@@ -270,7 +272,9 @@ class SpaceProperty:
                 del bpy.context.window_manager[wm_prop_name]
             delattr(space_type, attr)
 
-            bpy.utils.unregister_class(cls)
+            if prop != cls:
+                # 元々がbpy.types.PropertyGroupなら飛ばす
+                bpy.utils.unregister_class(cls)
 
             for screen in bpy.data.screens:
                 if wm_prop_name in screen:
