@@ -1194,7 +1194,9 @@ def operator_call(op, *args, _scene_update=True, **kw):
 @bpy.app.handlers.persistent
 def scene_update_pre(scene):
     win = bpy.context.window
-    for area in bpy.context.screen.areas:
+    if not win:  # アニメーションレンダリング時にて
+        return
+    for area in win.screen.areas:
         if area.type == 'VIEW_3D':
             v3d = area.spaces.active
             p = space_prop.get(v3d)
