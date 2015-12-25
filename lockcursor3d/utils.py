@@ -177,7 +177,26 @@ class SpaceProperty:
         self.load_post = load_post
         return load_post
 
-    def get_prop(self, space, attr=''):
+    def get_all(self, space_type=None, attr=''):
+        """
+        :param space_type: プロパティが一つだけの場合のみ省略可
+        :type space_type: bpy.types.Space
+        :param attr: プロパティが一つだけの場合のみ省略可
+        :type attr: str
+        :return:
+        :rtype:
+        """
+        if space_type and isinstance(space_type, str):
+            space_type = self.space_types.get(space_type)
+        context = bpy.context
+        for (st, attri, prop), (cls, wm_prop_name) in zip(
+                self.props, self.registered):
+            if st == space_type or not space_type and len(self.props) == 1:
+                if attri == attr or not attr and len(self.props) == 1:
+                    seq = getattr(context.window_manager, wm_prop_name)
+                    return seq
+
+    def get(self, space, attr=''):
         """
         :type space: bpy.types.Space
         :param attr: プロパティが一つだけの場合のみ省略可
@@ -185,17 +204,13 @@ class SpaceProperty:
         :return:
         :rtype:
         """
-        context = bpy.context
-        for (space_type, attri, prop), (cls, wm_prop_name) in zip(
-                self.props, self.registered):
-            if isinstance(space, space_type):
-                if attri == attr or not attr and len(self.props) == 1:
-                    seq = getattr(context.window_manager, wm_prop_name)
-                    key = str(space.as_pointer())
-                    if key not in seq:
-                        item = seq.add()
-                        item.name = key
-                    return seq[key]
+        seq = self.get_all(type(space), attr)
+        if seq is not None:
+            key = str(space.as_pointer())
+            if key not in seq:
+                item = seq.add()
+                item.name = key
+            return seq[key]
 
     def _property_name(self, space_type, attr):
         return space_type.__name__.lower() + '_' + attr

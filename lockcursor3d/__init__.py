@@ -80,7 +80,7 @@ def panel_draw_set():
     def draw(self, context):
         layout = self.layout
         view = context.space_data
-        layout.prop(space_prop.get_prop(view), 'lock_cursor_location')
+        layout.prop(space_prop.get(view), 'lock_cursor_location')
         col = layout.column()
         col.active = not view.lock_cursor_location
         col.prop(view, 'cursor_location', text='Location')

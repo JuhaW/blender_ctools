@@ -159,7 +159,7 @@ def sync_quad(context, area):
     """source/blender/editors/screen/area.c: region_rect_recursive()辺りを参考
     """
     v3d = area.spaces.active
-    prop = space_prop.get_prop(v3d)
+    prop = space_prop.get(v3d)
     if not prop.enable:
         return
     fx, fy = prop.center
@@ -259,7 +259,7 @@ class VIEW3D_OT_quadview_move(bpy.types.Operator):
 
     def modal(self, context, event):
         v3d = context.area.spaces.active
-        prop = space_prop.get_prop(v3d)
+        prop = space_prop.get(v3d)
 
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             context.window.cursor_set('DEFAULT')

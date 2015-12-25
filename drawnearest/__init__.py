@@ -775,7 +775,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         rv3d = context.region_data
         v3d = context.space_data
 
-        prop = space_prop.get_prop(v3d)
+        prop = space_prop.get(v3d)
         if not prop.enable:
             return
 
@@ -1030,7 +1030,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 
         for area in context.screen.areas:
             if area.type == 'VIEW_3D':
-                p = space_prop.get_prop(area.spaces.active)
+                p = space_prop.get(area.spaces.active)
                 if p.enable:
                     break
         else:
@@ -1126,7 +1126,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 
         win = context.window
         v3d = context.space_data
-        prop = space_prop.get_prop(v3d)
+        prop = space_prop.get(v3d)
         type = self.type
         if self.type == 'TOGGLE':
             if prop.enable:
@@ -1155,7 +1155,7 @@ def menu_func(self, context):
     self.layout.separator()
     col = self.layout.column(align=True)
     """:type: bpy.types.UILayout"""
-    prop = space_prop.get_prop(context.space_data)
+    prop = space_prop.get(context.space_data)
     col.active = context.mode == 'EDIT_MESH'
     col.prop(prop, 'enable', text='Draw Nearest')
     # col.active = context.window in VIEW3D_OT_draw_nearest_element.data
@@ -1197,7 +1197,7 @@ def scene_update_pre(scene):
     for area in bpy.context.screen.areas:
         if area.type == 'VIEW_3D':
             v3d = area.spaces.active
-            p = space_prop.get_prop(v3d)
+            p = space_prop.get(v3d)
             if p.enable:
                 if win not in VIEW3D_OT_draw_nearest_element.data:
                     c = bpy.context.copy()
