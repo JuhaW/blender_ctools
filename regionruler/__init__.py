@@ -79,6 +79,7 @@ else:
     from . import vamath as vam
     from . import vawm
     from .unitsystem import UnitSystem
+from .utils import AddonPreferences
 
 
 # 他のModalHandlerが開始する度にRulerを再起動する
@@ -343,6 +344,7 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
 
 
 class RegionRulerPreferences(
+        AddonPreferences,
         bpy.types.PropertyGroup if '.' in __package__ else
         bpy.types.AddonPreferences):
     def draw_property(self, attr, layout, text=None, skip_hidden=True,
@@ -492,22 +494,6 @@ class RegionRulerPreferences(
         prop.active = self.write_text_object
         self.draw_property('auto_run', col)
         self.draw_property('auto_save', col)
-
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
 
 
 ###############################################################################
@@ -2883,6 +2869,8 @@ def load_post_handler(dummy):
             for address, value in zip(data.spaces, props):
                 if isinstance(value, bool):  # 2.2.0のデータを変換
                     value = {'enable': value}
+                if value['enable']:
+                    running = True
                 data.spaces[address] = value
     elif prefs.auto_run:
         running = True
