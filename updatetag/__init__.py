@@ -40,8 +40,11 @@ import time
 
 import bpy
 
+from .utils import AddonPreferences
+
 
 class UpdateTagPreferences(
+        AddonPreferences,
         bpy.types.PropertyGroup if '.' in __package__ else
         bpy.types.AddonPreferences):
     bl_idname = __package__
@@ -88,22 +91,6 @@ class UpdateTagPreferences(
         sub = col.column()
         sub.prop(self, 'sculpt_interval')
         sub.active = self.use_sculpt
-
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
 
 
 class MATERIAL_PT_driver_update_tag(bpy.types.Panel):

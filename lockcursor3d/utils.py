@@ -20,6 +20,35 @@
 import bpy
 
 
+class AddonPreferences:
+    _module = {}
+
+    @classmethod
+    def get_prefs(cls):
+        if '.' in __package__:
+            pkg, name = __package__.split('.')
+            key = cls.__qualname__
+            if key in cls._module:
+                mod = cls._module[key]
+            else:
+                import importlib
+                mod = cls._module[key] = importlib.import_module(pkg)
+            return mod.get_addon_preferences(name)
+        else:
+            context = bpy.context
+            return context.user_preferences.addons[__package__].preferences
+
+    @classmethod
+    def register(cls):
+        if '.' in __package__:
+            cls.get_prefs()
+
+    @classmethod
+    def unregister(cls):
+        if cls.__qualname__ in cls._module:
+            del cls._module[cls.__qualname__]
+
+
 class SpaceProperty:
     """
     bpy.types.Spaceに仮想的なプロパティを追加

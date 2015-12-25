@@ -41,7 +41,7 @@ import math
 import bpy
 
 from .structures import *
-from .utils import SpaceProperty
+from .utils import AddonPreferences, SpaceProperty
 
 
 # regionの幅と高さの最小幅
@@ -49,6 +49,7 @@ MIN_SIZE = 5
 
 
 class QuadViewMovePreferences(
+        AddonPreferences,
         bpy.types.PropertyGroup if '.' in __package__ else
         bpy.types.AddonPreferences):
     bl_idname = __package__
@@ -65,22 +66,6 @@ class QuadViewMovePreferences(
         row.prop(self, 'threshold')
         column = split.column()
         column = split.column()
-
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
 
 
 def get_window_modal_handlers(window):

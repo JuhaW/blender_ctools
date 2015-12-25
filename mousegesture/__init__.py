@@ -1359,6 +1359,8 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
 
         # 'FULL'だと全regionを再描画する為、除外する
         self.use_texture = not context.screen.is_animation_playing
+        if '.' in __package__:
+            pass
 
         self.gen_textures(context)
 

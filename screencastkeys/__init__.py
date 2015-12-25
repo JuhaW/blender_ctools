@@ -41,11 +41,12 @@ import functools
 from ctypes import *
 import logging
 
-
 import bpy
 import bgl
 import blf
 import bpy.props
+
+from .utils import AddonPreferences
 
 
 MOUSE_RATIO = 0.535
@@ -1585,6 +1586,7 @@ class ScreencastKeysTimerReset(bpy.types.Operator):
 
 # properties used by the script
 class ScreenCastKeysPreferences(
+        AddonPreferences,
         bpy.types.PropertyGroup if '.' in __package__ else
         bpy.types.AddonPreferences):
     bl_idname = __package__
@@ -1757,22 +1759,6 @@ class ScreenCastKeysPreferences(
         row = column.row(align=True)
         row.enabled = pref.timer_show
         row.operator("view3d.screencast_keys_timer_reset", text="Reset")
-
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
 
 
 # defining the panel

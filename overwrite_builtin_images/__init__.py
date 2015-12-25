@@ -35,6 +35,8 @@ import ctypes
 import bpy
 import bpy.props
 
+from .utils import AddonPreferences
+
 
 def get_size_ptr(blend_cdll, size_name):
     size_addr = ctypes.addressof(getattr(blend_cdll, attrs[size_name]))
@@ -166,6 +168,7 @@ def update_icons32(self, context):
 
 
 class OverwriteSplashImagePreferences(
+        AddonPreferences,
         bpy.types.PropertyGroup if '.' in __package__ else
         bpy.types.AddonPreferences):
     bl_idname = __package__
@@ -218,22 +221,6 @@ class OverwriteSplashImagePreferences(
         row = col.row()
         icon = 'ERROR' if self.icons32_alert else 'NONE'
         row.prop(self, 'icons32', icon=icon)
-
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
 
 
 def restore_all():

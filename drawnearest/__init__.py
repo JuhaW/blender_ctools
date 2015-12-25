@@ -46,7 +46,7 @@ import bgl
 import blf
 from bpy_extras.view3d_utils import location_3d_to_region_2d as project
 
-from .utils import SpaceProperty
+from .utils import AddonPreferences, SpaceProperty
 
 
 def test_platform():
@@ -72,6 +72,7 @@ space_prop = SpaceProperty(
 # Addon Preferences
 ###############################################################################
 class DrawNearestPreferences(
+        AddonPreferences,
         bpy.types.PropertyGroup if '.' in __package__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
