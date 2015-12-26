@@ -25,8 +25,8 @@ bl_info = {
     'location': 'UserPreference > Add-ons > Overwrite Builtin Images',
     'description': 'Overwrite splash and icon images',
     'warning': 'Linux only',
-    'wiki_url': '',
-    'category': 'System',
+    'wiki_url': 'https://github.com/chromoly/blender-OverwriteBuiltinImages',
+    'category': 'User Interface',
 }
 
 

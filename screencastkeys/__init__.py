@@ -30,6 +30,7 @@ bl_info = {
                    "useful for screencasts.",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/"
                 "Py/Scripts/3D_interaction/Screencast_Key_Status_Tool",
+    'wiki_url2': 'https://github.com/chromoly/blender-ScreencastKeysMod',
     "tracker_url": "http://projects.blender.org/tracker/index.php?"
                    "func=detail&aid=21612",
     "category": "3D View"

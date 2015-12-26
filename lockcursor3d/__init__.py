@@ -36,7 +36,7 @@ bl_info = {
     'description': 'commit a791153: 3D Cursor: Add option to lock it in place '
                    'to prevent accidental modification',
     'warning': '',
-    'wiki_url': '',
+    'wiki_url': 'https://github.com/chromoly/lock_cursor3d',
     'tracker_url': '',
     'category': '3D View'
 }

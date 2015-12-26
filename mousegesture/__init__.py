@@ -25,7 +25,7 @@ bl_info = {
     'location': 'UserPreferences > Add-ons > Mouse Gesture',
     'description': '',
     'warning': '',
-    'wiki_url': '',
+    'wiki_url': 'https://github.com/chromoly/blender_mouse_gesture',
     'category': 'User Interface'}
 
 

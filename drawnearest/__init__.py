@@ -28,7 +28,8 @@ bl_info = {
     'version': (0, 1),
     'blender': (2, 76, 0),
     'location': 'View3D > Properties Panel > Mesh Display',
-    'category': '3D View'
+    'wiki_url': 'https://github.com/chromoly/blender-EditMeshDrawNearest',
+    'category': '3D View',
 }
 
 

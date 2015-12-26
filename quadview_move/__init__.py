@@ -25,9 +25,9 @@ bl_info = {
     'location': 'View3D',
     'description': '',
     'warning': '',
-    'wiki_url': '',
+    'wiki_url': 'https://github.com/chromoly/quadview_move',
     'tracker_url': '',
-    'category': 'Screen'}
+    'category': '3D View'}
 
 
 """

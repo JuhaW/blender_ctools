@@ -41,7 +41,7 @@ bl_info = {
     'location': 'View3D > Properties, ImageEditor > Properties',
     'description': '',
     'warning': '',
-    'wiki_url': '',
+    'wiki_url': 'https://github.com/chromoly/regionruler',
     'category': '3D View'
 }
 

@@ -18,6 +18,7 @@
 
 
 import inspect
+import traceback
 
 import bpy
 
@@ -46,15 +47,15 @@ bl_info = {
 
 
 sub_modules = [
-    drawnearest,
-    lockcoords,
-    lockcursor3d,
-    mousegesture,
-    overwrite_builtin_images,
-    quadview_move,
     regionruler,
+    drawnearest,
+    quadview_move,
+    lockcursor3d,
     screencastkeys,
     updatetag,
+    lockcoords,
+    mousegesture,
+    overwrite_builtin_images,
 ]
 
 
@@ -147,7 +148,7 @@ class CToolsPreferences(bpy.types.AddonPreferences):
             op = sub.operator('wm.context_toggle', text='', icon=icon,
                               emboss=False)
             op.data_path = 'addon_prefs.show_expanded_' + mod_name
-            sub.label(info['name'])
+            sub.label('{}: {}'.format(info['category'], info['name']))
             sub = row.row()
             sub.alignment = 'RIGHT'
             if info.get('warning'):
@@ -179,14 +180,30 @@ class CToolsPreferences(bpy.types.AddonPreferences):
                     split.label('Warning:')
                     split.label('  ' + info['warning'], icon='ERROR')
 
-                # 設定値
+                tot_row = int(bool(info.get('wiki_url')))
+                if tot_row:
+                    split = col.row().split(percentage=0.15)
+                    split.label(text='Internet:')
+                    if info.get('wiki_url'):
+                        op = split.operator('wm.url_open',
+                                            text='Documentation', icon='HELP')
+                        op.url = info.get('wiki_url')
+                    for i in range(4 - tot_row):
+                        split.separator()
+
+                # 詳細・設定値
                 if getattr(self, 'use_' + mod_name):
                     prefs = get_addon_preferences(mod_name)
                     if prefs and hasattr(prefs, 'draw'):
                         box = column.box()
                         prefs.layout = box
-                        prefs.draw(context)
+                        try:
+                            prefs.draw(context)
+                        except:
+                            traceback.print_exc()
+                            box.label(text='Error (see console)', icon='ERROR')
                         del prefs.layout
+
 
 for mod in sub_modules:
     info = mod.bl_info
