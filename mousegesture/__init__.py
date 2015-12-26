@@ -38,6 +38,7 @@ import bgl
 import blf
 from mathutils import Vector
 
+from .utils import AddonPreferences
 
 PIXEL_SIZE = 1.0
 
@@ -724,6 +725,7 @@ class WM_OT_mouse_gesture_from_text(bpy.types.Operator):
 
 
 class MouseGesturePreferences(
+        AddonPreferences,
         bpy.types.PropertyGroup if '.' in __package__ else
         bpy.types.AddonPreferences):
     bl_idname = __package__
@@ -788,22 +790,6 @@ class MouseGesturePreferences(
         op = sub.operator('wm.mouse_gesture_stubs', text='Add New',
                           icon='ZOOMIN')
         op.function = 'group_add'
-
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
 
 
 ###############################################################################
@@ -1360,7 +1346,12 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
         # 'FULL'だと全regionを再描画する為、除外する
         self.use_texture = not context.screen.is_animation_playing
         if '.' in __package__:
-            pass
+            try:
+                if context.space_data.drawnearest.enable:
+                    # テクスチャが真っ黒になるので無効化
+                    self.use_texture = False
+            except:
+                pass
 
         self.gen_textures(context)
 

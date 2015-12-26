@@ -51,8 +51,14 @@ TARGET_KEYCONFIG = 'Blender'  # or 'Blender User'
 
 
 space_prop = SpaceProperty(
-    [bpy.types.SpaceView3D, 'lock_cursor_location',
-     bpy.props.BoolProperty()])
+    [bpy.types.SpaceView3D,
+     'lock_cursor_location',
+     bpy.props.BoolProperty(
+         name='Lock Cursor Location',
+         description='3D Cursor location is locked to prevent it from being '
+                     'accidentally moved')
+     ]
+)
 
 
 class VIEW3D_OT_cursor3d_restrict(bpy.types.Operator):

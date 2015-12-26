@@ -24,19 +24,21 @@ class AddonPreferences:
     _module = {}
 
     @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            pkg, name = __package__.split('.')
-            key = cls.__qualname__
-            if key in cls._module:
-                mod = cls._module[key]
+    def get_prefs(cls, package=''):
+        if not package:
+            package = __package__
+        if '.' in package:
+            pkg, name = package.split('.')
+            # key = cls.__qualname__
+            if package in cls._module:
+                mod = cls._module[package]
             else:
                 import importlib
-                mod = cls._module[key] = importlib.import_module(pkg)
+                mod = cls._module[package] = importlib.import_module(pkg)
             return mod.get_addon_preferences(name)
         else:
             context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
+            return context.user_preferences.addons[package].preferences
 
     @classmethod
     def register(cls):
@@ -45,8 +47,7 @@ class AddonPreferences:
 
     @classmethod
     def unregister(cls):
-        if cls.__qualname__ in cls._module:
-            del cls._module[cls.__qualname__]
+        cls._module.clear()
 
 
 class SpaceProperty:
@@ -242,7 +243,10 @@ class SpaceProperty:
                     if key not in seq:
                         item = seq.add()
                         item.name = key
-                    return getattr(seq[key], attr)
+                    if prop == cls:
+                        return seq[key]
+                    else:
+                        return getattr(seq[key], attr)
 
                 def set(self, value):
                     seq = getattr(bpy.context.window_manager, wm_prop_name)
@@ -250,7 +254,8 @@ class SpaceProperty:
                     if key not in seq:
                         item = seq.add()
                         item.name = key
-                    return setattr(seq[key], attr, value)
+                    if prop != cls:  # PropertyGroupは書き込み不可
+                        return setattr(seq[key], attr, value)
 
                 return property(get, set)
 

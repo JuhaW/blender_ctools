@@ -132,22 +132,6 @@ class DrawNearestPreferences(
         col.prop(self, 'face_center_line_width')
         col.prop(self, 'use_ctypes')
 
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
-
 
 ###############################################################################
 # BGL
@@ -1149,6 +1133,14 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             context.window_manager.modal_handler_add(self)
 
             return {'RUNNING_MODAL'}
+
+    @classmethod
+    def unregister(cls):
+        cls.data.clear()
+        try:
+            cls.remove_handler()
+        except:
+            pass
 
 
 def menu_func(self, context):

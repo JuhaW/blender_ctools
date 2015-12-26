@@ -8,7 +8,7 @@ cd main
 touch test
 git init
 git add test
-git commit -m '1st'
+git commit -m 'main init'
 
 # ベアリポジトリ作成
 cd ..
@@ -26,7 +26,7 @@ cd sub
 touch test
 git init
 git add test
-git commit -m '1st'
+git commit -m 'sub init'
 
 # subtree用のベアリポジトリ作成
 cd ..
@@ -41,15 +41,25 @@ git push -u origin master
 cd ../main
 git subtree add --prefix=sub sui@crmo:/home/sui/tmp/sub.git master --squash
 
-# サブに何か追加してみる
+# メインリポジトリの中でサブに何か追加してみる
 touch sub/subtree_test
 git add sub/subtree_test
-git commit -m 'subtree test'
+git commit -m 'subtree change in main'
 git push origin master
-git subtree push --prefix=sub sui@crmo:/home/sui/tmp/sub.git master --squash
+git subtree push --prefix=sub sui@crmo:/home/sui/tmp/sub.git master # --squash は 'add', 'merge', 'pull' のみ
 
 git pull origin master
 
-# こちらにもファイルが追加されている
+# サブの方にもファイルが追加されている
 cd ../sub
 git pull origin master
+
+# サブに変更を加えてメインで取り込む
+echo 'subtree_change' > subtree_test
+git commit -am 'subtree change in sub'
+git push
+cd ../main
+git pull  # これでは変化無し
+git subtree pull --prefix=sub 'sui@crmo:/home/sui/tmp/sub.git' master --squash  # これで取り込みとマージが行われる
+git push
+

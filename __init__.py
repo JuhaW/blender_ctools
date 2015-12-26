@@ -40,7 +40,7 @@ bl_info = {
     'location': '',
     'description': '',
     'warning': '',
-    'wiki_url': '',
+    'wiki_url': 'https://github.com/chromoly/blender_lock_coords',
     'category': 'User Interface'
 }
 
@@ -61,23 +61,12 @@ sub_modules = [
 """
 サブモジュールでAddonPreferenceを使用する場合
 
+from .utils import AddonPreferences
 class RegionRulerPreferences(
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        # bpy.utils.register_class(cls)の際に実行される
-        if '.' in __package__:
-            cls.get_prefs()
+        AddonPreferences,
+        bpy.types.PropertyGroup if '.' in __package__ else
+        bpy.types.AddonPreferences):
+    ...
 
 """
 
