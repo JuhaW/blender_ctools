@@ -45,9 +45,9 @@ bl_info = {
     'version': (1, 0),
     'blender': (2, 76, 0),
     'location': '',
-    'description': '',
+    'description': 'Addon Collection',
     'warning': '',
-    'wiki_url': 'https://github.com/chromoly/blender_lock_coords',
+    'wiki_url': 'https://github.com/chromoly/blender_ctools',
     'category': 'User Interface'
 }
 
@@ -250,7 +250,7 @@ for mod in sub_modules:
 class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
     """このアドオンのディレクトリの中身を全部消して置換する"""
     bl_idname = 'script.cutils_module_update'
-    bl_label = 'Update Addon'
+    bl_label = 'Update'
 
     ctools_dir = os.path.dirname(os.path.abspath(__file__))
     bl_description = 'Warning: remove {}/*'.format(ctools_dir)
@@ -295,13 +295,13 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
             for n in os.listdir(new_ctools_dir):
                 p = os.path.join(new_ctools_dir, n)
                 if os.path.isdir(p):
-                    shutil.copytree(p, self.ctools_dir)
+                    shutil.copytree(p, os.path.join(self.ctools_dir, n))
                 else:
                     shutil.copy2(p, os.path.join(self.ctools_dir, n))
 
         context.window.cursor_set('DEFAULT')
 
-        self.report(type={'INFO'}, message='Updated. Please restart')
+        self.report(type={'WARNING'}, message='Updated. Please restart')
         return {'FINISHED'}
 
     def invoke(self, context, event):
