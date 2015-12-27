@@ -4,15 +4,15 @@ blender addon collection
 下記の物を纏めたアドオン
 
 ## [Edit Mesh Draw Nearest](https://github.com/chromoly/blender-EditMeshDrawNearest 'Screencast Key Status Tool')
-MeshEditModeに於いて、マウスクリックで次に選択するであろう要素を強調表示する。  
+マウスクリックで次に選択するであろう要素を強調表示する。  
 ![Image](images/drawnear.jpg)
 
 ## [Lock Coordinates](https://github.com/chromoly/blender_lock_coords 'Lock Coordinatesl')  
-MeshEditModeに於いて、頂点の移動、選択を抑制する。  
+頂点の移動、選択を抑制する。  
 ![Image](images/lockcoords.jpg)
 
 ## [Lock 3D Cursor](https://github.com/chromoly/lock_cursor3d 'Lock 3D Cursor')  
-マウスクリックでの3Dカーソル移動を禁止する。以前コミットされ、その後消されたものを再現。  
+マウスクリックでの3Dカーソル移動を禁止する。以前コミットされ、その後消されたものをアドオンで再現。  
 ![Image](images/lockcursor.jpg)
 
 ## [Mouse Gesture](https://github.com/chromoly/blender_mouse_gesture 'Mouse Gesture')  
@@ -38,3 +38,10 @@ QuadView境界を移動する。
 
 ## [Update Tag](https://github.com/chromoly/blender_update_tag 'Update Tag')
 マテリアルやテクスチャのドライバーの値が変更された際に3DViewを更新する。  
+
+## bug
+boxを入れ子にすると描画で不具合が起こるのでそれを修正するパッチ patch/ui_layout_box.patch を同梱しています。  
+適用前:  
+![Image](images/bug.jpg)  
+適用後:  
+![Image](images/patch.jpg)
