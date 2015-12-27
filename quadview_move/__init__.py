@@ -50,9 +50,9 @@ MIN_SIZE = 5
 
 class QuadViewMovePreferences(
         AddonPreferences,
-        bpy.types.PropertyGroup if '.' in __package__ else
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __name__
 
     # 反応する閾値
     threshold = bpy.props.IntProperty(

@@ -74,7 +74,7 @@ space_prop = SpaceProperty(
 ###############################################################################
 class DrawNearestPreferences(
         AddonPreferences,
-        bpy.types.PropertyGroup if '.' in __package__ else
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
 

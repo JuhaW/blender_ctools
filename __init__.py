@@ -19,6 +19,11 @@
 
 import inspect
 import traceback
+import tempfile
+import urllib.request
+import zipfile
+import os
+import shutil
 
 import bpy
 
@@ -34,7 +39,7 @@ from . import updatetag
 
 
 bl_info = {
-    'name': 'CUtils',
+    'name': 'CTools',
     'author': 'chromoly',
     'version': (1, 0),
     'blender': (2, 76, 0),
@@ -47,16 +52,20 @@ bl_info = {
 
 
 sub_modules = [
-    regionruler,
     drawnearest,
-    quadview_move,
-    lockcursor3d,
-    screencastkeys,
-    updatetag,
     lockcoords,
+    lockcursor3d,
     mousegesture,
     overwrite_builtin_images,
+    quadview_move,
+    regionruler,
+    screencastkeys,
+    updatetag,
 ]
+
+
+sub_modules.sort(
+    key=lambda mod: (mod.bl_info['category'], mod.bl_info['name']))
 
 
 """
@@ -65,7 +74,7 @@ sub_modules = [
 from .utils import AddonPreferences
 class RegionRulerPreferences(
         AddonPreferences,
-        bpy.types.PropertyGroup if '.' in __package__ else
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     ...
 
@@ -75,17 +84,17 @@ class RegionRulerPreferences(
 def _get_pref_class(mod):
     for obj in vars(mod).values():
         if inspect.isclass(obj) and issubclass(obj, bpy.types.PropertyGroup):
-            if hasattr(obj, 'bl_idname') and obj.bl_idname == mod.__package__:
+            if hasattr(obj, 'bl_idname') and obj.bl_idname == mod.__name__:
                 return obj
 
 
 def get_addon_preferences(name=''):
     """登録と取得"""
-    prefs = bpy.context.user_preferences.addons[__package__].preferences
+    prefs = bpy.context.user_preferences.addons[__name__].preferences
     if name:
         if not hasattr(prefs, name):
             for mod in sub_modules:
-                if mod.__package__.split('.')[-1] == name:
+                if mod.__name__.split('.')[-1] == name:
                     cls = _get_pref_class(mod)
                     if cls:
                         prop = bpy.props.PointerProperty(type=cls)
@@ -111,7 +120,7 @@ def unregister_submodule(mod):
         mod.__addon_enabled__ = False
 
         prefs = get_addon_preferences()
-        name = mod.__package__.split('.')[-1]
+        name = mod.__name__.split('.')[-1]
         if hasattr(CToolsPreferences, name):
             delattr(CToolsPreferences, name)
             bpy.utils.unregister_class(CToolsPreferences)
@@ -121,7 +130,7 @@ def unregister_submodule(mod):
 
 
 class CToolsPreferences(bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __name__
 
     # def __getattribute__(self, item):
     #     # test
@@ -135,7 +144,7 @@ class CToolsPreferences(bpy.types.AddonPreferences):
             info = mod.bl_info
             column = layout.column(align=True)
             box = column.box()
-            mod_name = mod.__package__.split('.')[-1]
+            mod_name = mod.__name__.split('.')[-1]
 
             # 一段目
             expand = getattr(self, 'show_expanded_' + mod_name)
@@ -204,14 +213,21 @@ class CToolsPreferences(bpy.types.AddonPreferences):
                             box.label(text='Error (see console)', icon='ERROR')
                         del prefs.layout
 
+        split = layout.row().split()
+        row = split.row()
+        row.operator('script.cutils_module_update',
+                     icon='FILE_REFRESH')
+        for i in range(3):
+            split.separator()
+
 
 for mod in sub_modules:
     info = mod.bl_info
-    mod_name = mod.__package__.split('.')[-1]
+    mod_name = mod.__name__.split('.')[-1]
 
     def gen_update(mod):
         def update(self, context):
-            if getattr(self, 'use_' + mod.__package__.split('.')[-1]):
+            if getattr(self, 'use_' + mod.__name__.split('.')[-1]):
                 if not mod.__addon_enabled__:
                     register_submodule(mod)
             else:
@@ -230,8 +246,69 @@ for mod in sub_modules:
     setattr(CToolsPreferences, 'show_expanded_' + mod_name, prop)
 
 
+class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
+    """このアドオンのディレクトリの中身を全部消して置換する"""
+    bl_idname = 'script.cutils_module_update'
+    bl_label = 'Update Addon'
+
+    ctools_dir = os.path.dirname(os.path.abspath(__file__))
+    bl_description = 'Warning: remove {}/*'.format(ctools_dir)
+
+    url = 'https://github.com/chromoly/blender_lock_coords/' \
+           'archive/master.zip'
+
+    def execute(self, context):
+        # '.git'が存在すればやめる
+        if '.git' in os.listdir(self.ctools_dir):
+            self.report(type={'ERROR'},
+                        message="Found '.git' directory. "
+                                "Please use git command")
+            return {'CANCELLED'}
+
+        context.window.cursor_set('WAIT')
+
+        req = urllib.request.urlopen(self.url)
+
+        with tempfile.TemporaryDirectory() as tmpdir_name:
+            with tempfile.NamedTemporaryFile(
+                    'wb', suffix='.zip', dir=tmpdir_name,
+                    delete=False) as tmpfile:
+                tmpfile.write(req.read()),
+            zf = zipfile.ZipFile(tmpfile.name, 'r')
+            dirname = ''
+            for name in zf.namelist():
+                dirname = os.path.split(name)[0]
+                zf.extract(name, path=tmpdir_name)
+
+            # delete all
+            for n in os.listdir(self.ctools_dir):
+                p = os.path.join(self.ctools_dir, n)
+                if os.path.isdir(p):
+                    shutil.rmtree(p)
+                else:
+                    os.remove(p)
+
+            # copy all
+            new_ctools_dir = os.path.join(tmpdir_name, dirname)
+            for n in os.listdir(new_ctools_dir):
+                p = os.path.join(new_ctools_dir, n)
+                if os.path.isdir(p):
+                    shutil.copytree(p, self.ctools_dir)
+                else:
+                    shutil.copy2(p, os.path.join(self.ctools_dir, n))
+
+        context.window.cursor_set('DEFAULT')
+
+        self.report(type={'INFO'}, message='Updated. Please restart')
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+
 classes = [
     CToolsPreferences,
+    SCRIPT_OT_cutils_module_update,
 ]
 
 
@@ -243,7 +320,7 @@ def register():
     for mod in sub_modules:
         if not hasattr(mod, '__addon_enabled__'):
             mod.__addon_enabled__ = False
-        name = mod.__package__.split('.')[-1]
+        name = mod.__name__.split('.')[-1]
         if getattr(prefs, 'use_' + name):
             register_submodule(mod)
 
@@ -251,7 +328,7 @@ def register():
 def unregister():
     prefs = get_addon_preferences()
     for mod in sub_modules:
-        if getattr(prefs, 'use_' + mod.__package__.split('.')[-1]):
+        if getattr(prefs, 'use_' + mod.__name__.split('.')[-1]):
             unregister_submodule(mod)
 
     for cls in classes[::-1]:

@@ -46,9 +46,9 @@ from .utils import AddonPreferences
 
 class UpdateTagPreferences(
         AddonPreferences,
-        bpy.types.PropertyGroup if '.' in __package__ else
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __name__
 
     # マテリアルのドライバの値が変わると更新
     use_material = bpy.props.BoolProperty(

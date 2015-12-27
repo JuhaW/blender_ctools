@@ -181,7 +181,7 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
         redraw_regions(context)
 
     enable = vap.BP('Enable',
-                    default=True,
+                    default=False,
                     update=_enabled_update)
 
     def _update_redraw(self, context):
@@ -267,7 +267,7 @@ space_prop = SpaceProperty(
 
 class RegionRulerPreferences(
         AddonPreferences,
-        bpy.types.PropertyGroup if '.' in __package__ else
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     def draw_property(self, attr, layout, text=None, skip_hidden=True,
                       row=False, **kwargs):
@@ -298,7 +298,7 @@ class RegionRulerPreferences(
                 sub.prop(self, attr, text='', **kwargs)
         return col
 
-    bl_idname = __package__
+    bl_idname = __name__
 
     font = vap.PP(
         'Font',

@@ -74,7 +74,7 @@ DEFAULT_SELECTABLE = False
 # メニュー呼び出しに使うショートカット
 MENU_KEYMAPS = (
     {'type': 'L', 'value': 'PRESS', 'shift': True, 'ctrl': True},
-    # {'type': 'BUTTON16MOUSE', 'value': 'PRESS', 'shift': True, 'ctrl': True},
+    {'type': 'BUTTON16MOUSE', 'value': 'PRESS', 'shift': True, 'ctrl': True},
 )
 
 # 頂点選択が無効になっている時の速度低下の軽減(linuxのみ)
@@ -834,7 +834,8 @@ def register():
                 kmi.properties.name = 'VIEW3D_MT_edit_mesh_lock_coords'
                 addon_keymaps.append((km, kmi))
             except:
-                pass
+                import traceback
+                traceback.print_exc()
 
         # kmi = km.keymap_items.new(
         #         'mesh.lock_coords_sort_order', 'L', 'PRESS',

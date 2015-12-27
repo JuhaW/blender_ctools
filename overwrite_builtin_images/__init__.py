@@ -169,9 +169,9 @@ def update_icons32(self, context):
 
 class OverwriteSplashImagePreferences(
         AddonPreferences,
-        bpy.types.PropertyGroup if '.' in __package__ else
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __name__
     splash = bpy.props.StringProperty(
         name='Splash Image',
         description='size: 501x282, max: {:,} bytes ({})'.format(

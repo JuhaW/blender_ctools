@@ -726,9 +726,9 @@ class WM_OT_mouse_gesture_from_text(bpy.types.Operator):
 
 class MouseGesturePreferences(
         AddonPreferences,
-        bpy.types.PropertyGroup if '.' in __package__ else
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __name__
 
     # 属性確認用
     # BOOL = bpy.props.BoolProperty()
@@ -1345,7 +1345,7 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
 
         # 'FULL'だと全regionを再描画する為、除外する
         self.use_texture = not context.screen.is_animation_playing
-        if '.' in __package__:
+        if '.' in __name__:
             try:
                 if context.space_data.drawnearest.enable:
                     # テクスチャが真っ黒になるので無効化

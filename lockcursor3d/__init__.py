@@ -64,7 +64,7 @@ space_prop = SpaceProperty(
 class VIEW3D_OT_cursor3d_restrict(bpy.types.Operator):
     bl_idname = 'view3d.cursor3d_restrict'
     bl_label = 'Cursor 3D'
-    bl_options = {'REGISTER'}
+    bl_options = set()
 
     @classmethod
     def poll(cls, context):
@@ -116,7 +116,7 @@ def panel_draw_restore():
     if hasattr(cls.draw, '_draw_funcs'):
         if draw_func_bak:
             for i, func in enumerate(cls.draw._draw_funcs):
-                if func.__module__ == __package__:
+                if func.__module__ == __name__:
                     cls.draw._draw_funcs[i] = draw_func_bak
     else:
         cls.draw = draw_func_bak
