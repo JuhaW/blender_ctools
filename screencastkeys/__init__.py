@@ -47,6 +47,7 @@ import bgl
 import blf
 import bpy.props
 
+from .structures import wmWindow, wmEventHandler
 from .utils import AddonPreferences
 
 
@@ -59,185 +60,6 @@ _handler.setLevel(logging.NOTSET)
 _formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 _handler.setFormatter(_formatter)
 logger.addHandler(_handler)
-
-
-###############################################################################
-# ctypes
-###############################################################################
-class Structures:
-    class ListBase(Structure):
-        """source/blender/makesdna/DNA_listBase.h: 59"""
-        _fields_ = [
-            ('first', c_void_p),
-            ('last', c_void_p)
-        ]
-
-    class wmEvent(Structure):
-        """source/blender/windowmanager/WM_types.h: 431"""
-        pass
-
-    wmEvent._fields_ = [
-        ('next', POINTER(wmEvent)),
-        ('prev', POINTER(wmEvent)),
-        ('type', c_short),
-        ('val', c_short),
-        ('x', c_int),
-        ('y', c_int),
-        ('mval', c_int * 2),
-        ('utf8_buf', c_char * 6),
-
-        ('ascii', c_char),
-        ('pad', c_char),
-
-        ('is_key_pressed', c_bool),
-
-        ('prevtype', c_short),
-        ('prevval', c_short),
-        ('prevx', c_int),
-        ('prevy', c_int),
-        ('prevclick_time', c_double),
-        ('prevclickx', c_int),
-        ('prevclicky', c_int),
-
-        ('shift', c_short),
-        ('ctrl', c_short),
-        ('alt', c_short),
-        ('oskey', c_short),
-        ('keymodifier', c_short),
-
-        ('check_click', c_short),
-
-        ('keymap_idname', c_char_p),
-
-        ('tablet_data', c_void_p),  # const struct wmTabletData
-
-        ('custom', c_short),
-        ('customdatafree', c_short),
-        ('pad2', c_int),
-
-        ('customdata', c_void_p),
-    ]
-
-    class wmOperatorType(Structure):
-        """source/blender/windowmanager/WM_types.h: 517"""
-        _fields_ = [
-            ('name', c_char_p),
-            ('idname', c_char_p),
-            ('translation_context', c_char_p),
-            ('description', c_char_p),
-        ]
-
-    class wmWindow(Structure):
-        """source/blender/makesdna/DNA_windowmanager_types.h: 175"""
-        pass
-
-    wmWindow._fields_ = [
-        ('next', POINTER(wmWindow)),
-        ('prev', POINTER(wmWindow)),
-
-        ('ghostwin', c_void_p),
-
-        ('screen', c_void_p),  # struct bScreen
-        ('newscreen', c_void_p),  # struct bScreen
-        ('screenname', c_char * 64),
-
-        ('posx', c_short),
-        ('posy', c_short),
-        ('sizex', c_short),
-        ('sizey', c_short),
-        ('windowstate', c_short),
-        ('monitor', c_short),
-        ('active', c_short),
-        ('cursor', c_short),
-        ('lastcursor', c_short),
-        ('modalcursor', c_short),
-        ('grabcursor', c_short),
-        ('addmousemove', c_short),
-
-        ('winid', c_int),
-
-        ('lock_pie_event', c_short),
-        ('last_pie_event', c_short),
-
-        ('eventstate', POINTER(wmEvent)),
-
-        ('curswin', c_void_p),  # struct wmSubWindow
-
-        ('tweak', c_void_p),  # struct wmGesture
-
-        ('ime_data', c_void_p),  # struct wmIMEData
-
-        ('drawmethod', c_int),
-        ('drawfail', c_int),
-        ('drawdata', ListBase),
-
-        ('queue', ListBase),
-        ('handlers', ListBase),
-        ('modalhandlers', ListBase),
-
-        ('subwindows', ListBase),
-        ('gesture', ListBase),
-
-        ('stereo3d_format', c_void_p),  # struct Stereo3dFormat
-    ]
-
-    class wmOperator(Structure):
-        """source/blender/makesdna/DNA_windowmanager_types.h: 344"""
-        pass
-
-    wmOperator._fields_ = [
-        ('next', POINTER(wmOperator)),
-        ('prev', POINTER(wmOperator)),
-
-        ('idname', c_char * 64),
-        ('properties', c_void_p),  # IDProperty
-
-        ('type', POINTER(wmOperatorType)),
-        ('customdata', c_void_p),
-        ('py_instance', py_object),  # python stores the class instance here
-
-        ('ptr', c_void_p),  # PointerRNA
-        ('reports', c_void_p),  # ReportList
-
-        ('macro', ListBase),
-        ('opm', POINTER(wmOperator)),
-        ('layout', c_void_p),  # uiLayout
-        ('flag', c_short),
-        ('pad', c_short * 3)
-    ]
-
-    class wmEventHandler(Structure):
-        """source/blender/windowmanager/wm_event_system.h: 45"""
-        pass
-
-    wmEventHandler._fields_ = [
-        ('next', POINTER(wmEventHandler)),
-        ('prev', POINTER(wmEventHandler)),  # struct wmEventHandler
-
-        ('type', c_int),
-        ('flag', c_int),
-
-        ('keymap', c_void_p),
-        ('bblocal', c_void_p),
-        ('bbwin', c_void_p),  # const rcti
-
-        ('op', POINTER(wmOperator)),
-        ('op_area', c_void_p),  # struct ScrArea
-        ('op_region', c_void_p),  # struct ARegion
-        ('op_region_type', c_short),
-
-        ('ui_handle', c_void_p),
-        # /* ui handler */
-        # wmUIHandlerFunc ui_handle;          /* callback receiving events */
-        # wmUIHandlerRemoveFunc ui_remove;    /* callback when handler is removed */
-        # void *ui_userdata;                  /* user data pointer */
-        # struct ScrArea *ui_area;            /* for derived/modal handlers */
-        # struct ARegion *ui_region;          /* for derived/modal handlers */
-        # struct ARegion *ui_menu;            /* for derived/modal handlers */
-        #
-        # /* drop box handler */
-        # ListBase *dropboxes;
-    ]
 
 
 ###############################################################################
@@ -327,17 +149,17 @@ class ModalHandlerManager:
     def _get_window_modal_handlers(self, window):
         """ctypesを使い、windowに登録されている modal handlerのリストを返す。
         idnameはUIなら 'UI'、認識できない物なら 'UNKNOWN' となる。
-        :rtype: list[(Structures.wmEventHandler, str, int, int, int)]
+        :rtype: list[(wmEventHandler, str, int, int, int)]
         """
         if not window:
             return []
 
         addr = window.as_pointer()
-        win = cast(c_void_p(addr), POINTER(Structures.wmWindow)).contents
+        win = cast(c_void_p(addr), POINTER(wmWindow)).contents
 
         handlers = []
 
-        ptr = cast(win.modalhandlers.first, POINTER(Structures.wmEventHandler))
+        ptr = cast(win.modalhandlers.first, POINTER(wmEventHandler))
         while ptr:
             # http://docs.python.jp/3/library/ctypes.html#surprises
             # この辺りの事には注意する事
@@ -441,8 +263,8 @@ class ModalHandlerManager:
             else:
                 idname_py = idname
             if idname_py == self.idname:
-                op_area_ptr = cast(area_p, c_void_p)
-                op_region_ptr = cast(region_p, c_void_p)
+                op_area_ptr = area_p
+                op_region_ptr = region_p
                 op_region_type = region_t
                 break
             else:
@@ -720,7 +542,7 @@ class ModalHandlerManager:
         wm = context.window_manager
         for window in wm.windows:
             addr = window.as_pointer()
-            win = cast(c_void_p(addr), POINTER(Structures.wmWindow)).contents
+            win = cast(c_void_p(addr), POINTER(wmWindow)).contents
             if win.active:
                 return window
 
