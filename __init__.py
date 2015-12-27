@@ -253,7 +253,8 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
     bl_label = 'Update'
 
     ctools_dir = os.path.dirname(os.path.abspath(__file__))
-    bl_description = 'Warning: remove {}/*'.format(ctools_dir)
+    bl_description = 'Download and install addon. ' + \
+        'Warning: remove all files under {}/'.format(ctools_dir)
 
     url = 'https://github.com/chromoly/blender_ctools/archive/master.zip'
 
