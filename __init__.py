@@ -276,7 +276,9 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
             zf = zipfile.ZipFile(tmpfile.name, 'r')
             dirname = ''
             for name in zf.namelist():
-                dirname = os.path.split(name)[0]
+                d, n = os.path.split(name)
+                if not n:
+                    dirname = d
                 zf.extract(name, path=tmpdir_name)
 
             # delete all
