@@ -81,18 +81,22 @@ original = {}
 
 
 def read_original():
-    if not test_platform():
-        return
-
     original.clear()
-    blend_cdll = ctypes.CDLL('')
+    if test_platform():
+        blend_cdll = ctypes.CDLL('')
+    else:
+        blend_cdll = None
     for size, image in (('splash_size', 'splash'),
                         ('splash2x_size', 'splash2x'),
                         ('icons16_size', 'icons16'),
                         ('icons32_size', 'icons32')):
-        original[size] = get_size_ptr(blend_cdll, size).contents.value
-        arr = get_image_ptr(blend_cdll, image)
-        original[image] = [arr[i] for i in range(original[size])]
+        if blend_cdll:
+            original[size] = get_size_ptr(blend_cdll, size).contents.value
+            arr = get_image_ptr(blend_cdll, image)
+            original[image] = [arr[i] for i in range(original[size])]
+        else:
+            original[size] = 0
+            original[image] = []
 
 
 def update_image(context, image_type, image_size,
