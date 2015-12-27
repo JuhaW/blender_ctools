@@ -1,7 +1,6 @@
-# ctools
+# Blender Addon 'CTools'
 
-blender addon collection  
-下記の物を纏めたアドオン
+下記の物をまとめたアドオン
 
 ## [Edit Mesh Draw Nearest](https://github.com/chromoly/blender-EditMeshDrawNearest 'Screencast Key Status Tool')
 マウスクリックで次に選択するであろう要素を強調表示する。  
@@ -16,7 +15,7 @@ blender addon collection
 ![Image](images/lockcursor.jpg)
 
 ## [Mouse Gesture](https://github.com/chromoly/blender_mouse_gesture 'Mouse Gesture')  
-左マウスボタンを使ったマウスジェスチャー。  
+マウスジェスチャー。  
 ![Image](images/gesture.jpg)
 
 ## [Overwrite Builtin Images](https://github.com/chromoly/blender-OverwriteBuiltinImages 'Overwrite Builtin Images')
@@ -40,7 +39,7 @@ QuadView境界を移動する。
 マテリアルやテクスチャのドライバーの値が変更された際に3DViewを更新する。  
 
 ## patch: patch/ui_layout_box.patch
-boxを入れ子にすると描画で不具合が起こるのでそれを修正するパッチを同梱。  
+boxを入れ子にすると描画で不具合が起こるのでそれを修正するパッチ。  
 適用前:  
 ![Image](images/bug.jpg)  
 適用後:  
