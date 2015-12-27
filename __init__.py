@@ -24,6 +24,7 @@ import urllib.request
 import zipfile
 import os
 import shutil
+import pathlib
 
 import bpy
 
@@ -276,9 +277,9 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
             zf = zipfile.ZipFile(tmpfile.name, 'r')
             dirname = ''
             for name in zf.namelist():
-                d, n = os.path.split(name)
-                if not n:
-                    dirname = d
+                p = pathlib.PurePath(name)
+                if len(p.pats) == 1:
+                    dirname = p.parts[0]
                 zf.extract(name, path=tmpdir_name)
 
             # delete all
