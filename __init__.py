@@ -254,8 +254,7 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
     ctools_dir = os.path.dirname(os.path.abspath(__file__))
     bl_description = 'Warning: remove {}/*'.format(ctools_dir)
 
-    url = 'https://github.com/chromoly/blender_lock_coords/' \
-           'archive/master.zip'
+    url = 'https://github.com/chromoly/blender_ctools/archive/master.zip'
 
     def execute(self, context):
         # '.git'が存在すればやめる

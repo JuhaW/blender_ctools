@@ -39,8 +39,8 @@ QuadView境界を移動する。
 ## [Update Tag](https://github.com/chromoly/blender_update_tag 'Update Tag')
 マテリアルやテクスチャのドライバーの値が変更された際に3DViewを更新する。  
 
-## bug
-boxを入れ子にすると描画で不具合が起こるのでそれを修正するパッチ patch/ui_layout_box.patch を同梱しています。  
+## patch: patch/ui_layout_box.patch
+boxを入れ子にすると描画で不具合が起こるのでそれを修正するパッチを同梱。  
 適用前:  
 ![Image](images/bug.jpg)  
 適用後:  
