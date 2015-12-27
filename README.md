@@ -24,7 +24,7 @@
 ![Image](images/splash.jpg)
 
 ## [QuadView Move](https://github.com/chromoly/quadview_move 'QuadView Move')
-QuadView境界を移動する。  
+マウスドラッグでQuadView境界を移動する。  
 ![Image](images/quad.jpg)
 
 ## [Region Ruler](https://github.com/chromoly/regionruler 'Region Ruler')
@@ -38,8 +38,9 @@ QuadView境界を移動する。
 ## [Update Tag](https://github.com/chromoly/blender_update_tag 'Update Tag')
 マテリアルやテクスチャのドライバーの値が変更された際に3DViewを更新する。  
 
-## patch: patch/ui_layout_box.patch
-boxを入れ子にすると描画で不具合が起こるのでそれを修正するパッチ。  
+## その他
+### patch/ui_layout_box.patch
+alignが真の状態のUILayoutでbox描画に不具合が起こる問題を修正するパッチ。  
 適用前:  
 ![Image](images/bug.jpg)  
 適用後:  
