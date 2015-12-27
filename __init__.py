@@ -234,7 +234,7 @@ class CToolsPreferences(bpy.types.AddonPreferences):
                      icon='FILE_REFRESH')
         sub = row.row()
         sub.alignment = 'RIGHT'
-        sub.prop(self, 'patched')
+        sub.prop(self, 'align_box_draw')
 
 
 for mod in sub_modules:
