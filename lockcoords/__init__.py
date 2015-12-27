@@ -834,13 +834,9 @@ def register():
                 kmi.properties.name = 'VIEW3D_MT_edit_mesh_lock_coords'
                 addon_keymaps.append((km, kmi))
             except:
-                import traceback
-                traceback.print_exc()
-
-        # kmi = km.keymap_items.new(
-        #         'mesh.lock_coords_sort_order', 'L', 'PRESS',
-        #         shift=True, ctrl=True, alt=True)
-        # addon_keymaps.append((km, kmi))
+                # import traceback
+                # traceback.print_exc()
+                pass
 
 
 def unregister():
