@@ -278,7 +278,7 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
             dirname = ''
             for name in zf.namelist():
                 p = pathlib.PurePath(name)
-                if len(p.pats) == 1:
+                if len(p.parts) == 1:
                     dirname = p.parts[0]
                 zf.extract(name, path=tmpdir_name)
 
