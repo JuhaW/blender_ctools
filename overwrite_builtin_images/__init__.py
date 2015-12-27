@@ -99,6 +99,9 @@ def read_original():
             original[image] = []
 
 
+read_original()
+
+
 def update_image(context, image_type, image_size,
                  update_icons_cache=True):
     if not test_platform():
@@ -263,7 +266,6 @@ def restore_all():
 
 
 def register():
-    read_original()
     bpy.utils.register_class(OverwriteSplashImagePreferences)
     update_image(bpy.context, 'splash', 1)
     update_image(bpy.context, 'splash', 2)
