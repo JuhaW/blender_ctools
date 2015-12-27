@@ -223,12 +223,12 @@ class CToolsPreferences(bpy.types.AddonPreferences):
                             box.label(text='Error (see console)', icon='ERROR')
                         del prefs.layout
 
-        # split = layout.row().split()
-        # row = split.row()
-        # row.operator('script.cutils_module_update',
-        #              icon='FILE_REFRESH')
-        # for i in range(3):
-        #     split.separator()
+        split = layout.row().split()
+        row = split.row()
+        row.operator('script.cutils_module_update',
+                     icon='FILE_REFRESH')
+        for i in range(3):
+            split.separator()
 
 
 for mod in sub_modules:
@@ -283,7 +283,7 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
             with tempfile.NamedTemporaryFile(
                     'wb', suffix='.zip', dir=tmpdir_name,
                     delete=False) as tmpfile:
-                tmpfile.write(req.read()),
+                tmpfile.write(req.read())
             zf = zipfile.ZipFile(tmpfile.name, 'r')
             dirname = ''
             for name in zf.namelist():
@@ -291,6 +291,7 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
                 if len(p.parts) == 1:
                     dirname = p.parts[0]
                 zf.extract(name, path=tmpdir_name)
+            zf.close()
 
             # delete all
             for n in os.listdir(self.ctools_dir):
@@ -320,7 +321,7 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
 
 classes = [
     CToolsPreferences,
-    # SCRIPT_OT_cutils_module_update,
+    SCRIPT_OT_cutils_module_update,
 ]
 
 
