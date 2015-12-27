@@ -139,9 +139,10 @@ def test_platform():
 class CToolsPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
-    # def __getattribute__(self, item):
-    #     # test
-    #     return super().__getattribute__(item)
+    align_box_draw = bpy.props.BoolProperty(
+            name='Box Draw',
+            description='If applied patch: patch/ui_layout_box.patch',
+            default=False)
 
     def draw(self, context):
         layout = self.layout
@@ -150,7 +151,7 @@ class CToolsPreferences(bpy.types.AddonPreferences):
         for mod in sub_modules:
             mod_name = mod.__name__.split('.')[-1]
             info = mod.bl_info
-            column = layout.column(align=True)
+            column = layout.column(align=self.align_box_draw)
             box = column.box()
 
             # 一段目
@@ -211,7 +212,10 @@ class CToolsPreferences(bpy.types.AddonPreferences):
                 if getattr(self, 'use_' + mod_name):
                     prefs = get_addon_preferences(mod_name)
                     if prefs and hasattr(prefs, 'draw'):
-                        box = column.box()
+                        if self.align_box_draw:
+                            box = column.box()
+                        else:
+                            box = box.column()
                         if mod_name == 'overwrite_builtin_images':
                             if not test_platform():
                                 box.active = False
@@ -223,12 +227,14 @@ class CToolsPreferences(bpy.types.AddonPreferences):
                             box.label(text='Error (see console)', icon='ERROR')
                         del prefs.layout
 
-        split = layout.row().split()
-        row = split.row()
-        row.operator('script.cutils_module_update',
+        row = layout.row()
+        sub = row.row()
+        sub.alignment = 'LEFT'
+        sub.operator('script.cutils_module_update',
                      icon='FILE_REFRESH')
-        for i in range(3):
-            split.separator()
+        sub = row.row()
+        sub.alignment = 'RIGHT'
+        sub.prop(self, 'patched')
 
 
 for mod in sub_modules:
