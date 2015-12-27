@@ -223,12 +223,12 @@ class CToolsPreferences(bpy.types.AddonPreferences):
                             box.label(text='Error (see console)', icon='ERROR')
                         del prefs.layout
 
-        split = layout.row().split()
-        row = split.row()
-        row.operator('script.cutils_module_update',
-                     icon='FILE_REFRESH')
-        for i in range(3):
-            split.separator()
+        # split = layout.row().split()
+        # row = split.row()
+        # row.operator('script.cutils_module_update',
+        #              icon='FILE_REFRESH')
+        # for i in range(3):
+        #     split.separator()
 
 
 for mod in sub_modules:
@@ -320,7 +320,7 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
 
 classes = [
     CToolsPreferences,
-    SCRIPT_OT_cutils_module_update,
+    # SCRIPT_OT_cutils_module_update,
 ]
 
 
