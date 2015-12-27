@@ -30,12 +30,18 @@ bl_info = {
 }
 
 
+import platform
 import ctypes
 
 import bpy
 import bpy.props
 
 from .utils import AddonPreferences
+
+
+def test_platform():
+    return (platform.platform().split('-')[0].lower()
+            not in {'darwin', 'windows'})
 
 
 def get_size_ptr(blend_cdll, size_name):
@@ -71,19 +77,29 @@ attrs.update({v: k for k, v in attrs.items()})
 
 
 # builtin images
-blend_cdll = ctypes.CDLL('')
 original = {}
-for size, image in (('splash_size', 'splash'),
-                    ('splash2x_size', 'splash2x'),
-                    ('icons16_size', 'icons16'),
-                    ('icons32_size', 'icons32')):
-    original[size] = get_size_ptr(blend_cdll, size).contents.value
-    arr = get_image_ptr(blend_cdll, image)
-    original[image] = [arr[i] for i in range(original[size])]
+
+
+def read_original():
+    if not test_platform():
+        return
+
+    original.clear()
+    blend_cdll = ctypes.CDLL('')
+    for size, image in (('splash_size', 'splash'),
+                        ('splash2x_size', 'splash2x'),
+                        ('icons16_size', 'icons16'),
+                        ('icons32_size', 'icons32')):
+        original[size] = get_size_ptr(blend_cdll, size).contents.value
+        arr = get_image_ptr(blend_cdll, image)
+        original[image] = [arr[i] for i in range(original[size])]
 
 
 def update_image(context, image_type, image_size,
                  update_icons_cache=True):
+    if not test_platform():
+        return
+
     pref = OverwriteSplashImagePreferences.get_prefs()
     if image_type == 'splash':
         if image_size == 1:
@@ -224,6 +240,9 @@ class OverwriteSplashImagePreferences(
 
 
 def restore_all():
+    if not test_platform():
+        return
+
     blend_cdll = ctypes.CDLL('')
     for size_name, image_name in (('splash_size', 'splash'),
                                   ('splash2x_size', 'splash2x'),
@@ -240,6 +259,7 @@ def restore_all():
 
 
 def register():
+    read_original()
     bpy.utils.register_class(OverwriteSplashImagePreferences)
     update_image(bpy.context, 'splash', 1)
     update_image(bpy.context, 'splash', 2)

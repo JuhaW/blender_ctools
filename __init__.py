@@ -17,6 +17,7 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
+import platform
 import inspect
 import traceback
 import tempfile
@@ -130,6 +131,11 @@ def unregister_submodule(mod):
                 del prefs[name]
 
 
+def test_platform():
+    return (platform.platform().split('-')[0].lower()
+            not in {'darwin', 'windows'})
+
+
 class CToolsPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
@@ -142,10 +148,10 @@ class CToolsPreferences(bpy.types.AddonPreferences):
         """:type: bpy.types.UILayout"""
 
         for mod in sub_modules:
+            mod_name = mod.__name__.split('.')[-1]
             info = mod.bl_info
             column = layout.column(align=True)
             box = column.box()
-            mod_name = mod.__name__.split('.')[-1]
 
             # 一段目
             expand = getattr(self, 'show_expanded_' + mod_name)
@@ -206,6 +212,9 @@ class CToolsPreferences(bpy.types.AddonPreferences):
                     prefs = get_addon_preferences(mod_name)
                     if prefs and hasattr(prefs, 'draw'):
                         box = column.box()
+                        if mod_name == 'overwrite_builtin_images':
+                            if not test_platform():
+                                box.active = False
                         prefs.layout = box
                         try:
                             prefs.draw(context)
