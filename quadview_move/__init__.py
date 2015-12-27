@@ -247,7 +247,7 @@ def sync_quad(context, area):
 class VIEW3D_OT_quadview_move(bpy.types.Operator):
     bl_idname = 'view3d.quadview_move'
     bl_label = 'QuadView Move'
-    bl_options = set()  # {'REGISTER'}
+    bl_options = set()
 
     @classmethod
     def poll(cls, context):
@@ -264,7 +264,7 @@ class VIEW3D_OT_quadview_move(bpy.types.Operator):
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             context.window.cursor_set('DEFAULT')
             return {'FINISHED'}
-        elif event.type == 'ESC':
+        elif event.type in {'ESC', 'RIGHTMOUSE'}:
             prop.center = (0.5, 0.5)
             sync_quad(context, context.area)
             prop.enable = False
