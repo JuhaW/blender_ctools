@@ -1128,32 +1128,20 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         return selected_verts, selected_edges, selected_faces
 
     def find_preselection_loop_edgering(self, context, context_dict,
-                                        mco_region, ring, toggle, use_ctypes):
+                                        mco_region, ring, use_ctypes):
         mesh = context.active_object.data
         bm = bmesh.from_edit_mesh(mesh)
-        if use_ctypes:
-            bm.verts.index_update()
-            bm.edges.index_update()
-            bm.faces.index_update()
-        if toggle:
-            verts_pre, edges_pre, faces_pre = self.get_selected(bm, use_ctypes)
-            if use_ctypes:
-                verts_pre = [bm.verts[i] for i in verts_pre]
-                edges_pre = [bm.edges[i] for i in edges_pre]
-                faces_pre = [bm.faces[i] for i in faces_pre]
-        else:
-            bpy.ops.mesh.select_all(context_dict, True, action='DESELECT')
+        bpy.ops.mesh.select_all(context_dict, True, action='DESELECT')
         if ring:
             r = bpy.ops.mesh.edgering_select(
                     context_dict, 'INVOKE_DEFAULT', True, extend=False,
-                    deselect=False, toggle=toggle, ring=True)
+                    deselect=False, toggle=False, ring=True)
         else:
             r = bpy.ops.mesh.loop_select(
                     context_dict, 'INVOKE_DEFAULT', True, extend=False,
-                    deselect=False, toggle=toggle, ring=False)
+                    deselect=False, toggle=False, ring=False)
         if r == {'CANCELLED'}:
-            if not toggle:
-                bpy.ops.ed.undo()
+            bpy.ops.ed.undo()
             return [], [], [], []
 
         verts, edges, faces = self.get_selected(bm, use_ctypes)
@@ -1162,23 +1150,13 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             edges = [bm.edges[i] for i in edges]
             faces = [bm.faces[i] for i in faces]
 
-        if toggle:
-            # 選択/非選択が切り替わったもののみ強調表示
-            verts = set(verts) ^ set(verts_pre)
-            edges = set(edges) ^ set(edges_pre)
-            if ring and bm.select_mode & {'FACE', 'VERT'}:
-                faces = set(faces) ^ set(faces_pre)
-            else:
-                faces = []
-
         vert_coords = [v.co.copy() for v in verts]
         edge_coords = [[v.co.copy() for v in e.verts] for e in edges]
         # if bm.select_mode & {'FACE'}:
         face_coords = [[v.co.copy() for v in f.verts] for f in faces]
         medians = [f.calc_center_median() for f in faces]
 
-        if not toggle:
-            bpy.ops.ed.undo()  # mesh.select_all
+        bpy.ops.ed.undo()  # mesh.select_all
         if r == {'FINISHED'}:  # loop_select / edgering_select
             bpy.ops.ed.undo()
 
@@ -1420,11 +1398,9 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         elif prefs.use_loop_select:
             del bm
             ring = mode == 'edgering'
-            toggle = shift
             vert_coords, edge_coords, face_coords, medians = \
                 self.find_preselection_loop_edgering(
-                    context, context_dict, mco_region, ring, toggle,
-                        prefs.use_ctypes)
+                    context, context_dict, mco_region, ring, prefs.use_ctypes)
             if vert_coords or edge_coords or face_coords:
                 data['targets'] = [vert_coords, edge_coords, face_coords,
                                    medians]
