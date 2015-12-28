@@ -476,7 +476,7 @@ class MouseGestureItem(bpy.types.PropertyGroup):
                 'EXEC_REGION_PREVIEW', 'EXEC_AREA', 'EXEC_SCREEN']],
         default='INVOKE_DEFAULT'
     )
-    operator_undo = bpy.props.BoolProperty(name='Undo', default=False)
+    operator_undo = bpy.props.BoolProperty(name='Undo', default=True)
     operator_search = bpy.props.EnumProperty(
         name='Operator',
         items=prop_operator_search_items,
@@ -1316,8 +1316,8 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
                 elif self.item.type == 'OPERATOR':
                     operator = get_operator(self.item.operator)
                     args = [self.item.operator_execution_context]
-                    if self.item.is_property_set('operator_undo'):
-                        args.append(self.item.operator_undo)
+                    # if self.item.is_property_set('operator_undo'):
+                    args.append(self.item.operator_undo)
                     kwargs = {}
                     for arg in self.item.operator_args:
                         n = arg.name.split('__')[-1]
