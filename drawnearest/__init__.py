@@ -17,7 +17,6 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
-
 """
 MeshのEditModeに於いて、右クリックで選択される頂点/辺/面を強調表示する。
 """
@@ -25,7 +24,7 @@ MeshのEditModeに於いて、右クリックで選択される頂点/辺/面を
 bl_info = {
     'name': 'Edit Mesh Draw Nearest',
     'author': 'chromoly',
-    'version': (0, 1),
+    'version': (0, 2),
     'blender': (2, 76, 0),
     'location': 'View3D > Properties Panel > Mesh Display',
     'wiki_url': 'https://github.com/chromoly/blender-EditMeshDrawNearest',
@@ -39,9 +38,11 @@ import ctypes
 from ctypes import Structure, POINTER, addressof, byref, cast, c_bool, c_char,\
     c_int, c_int8, c_float, c_short, c_void_p, py_object, sizeof
 import re
+import numpy as np
 
 import bpy
 import bmesh
+import mathutils
 from mathutils import Matrix
 import bgl
 import blf
@@ -80,27 +81,35 @@ class DrawNearestPreferences(
 
     select_color = bpy.props.FloatVectorProperty(
         name='Select Color',
-        default=(1.0, 1.0, 0.5, 1.0),
-        subtype='COLOR_GAMMA',
-        size=4
-    )
-    deselect_color = bpy.props.FloatVectorProperty(
-        name='Deselect Color',
-        default=(1.0, 1.0, 0.5, 1.0),
+        default=(0.0, 0.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
         subtype='COLOR_GAMMA',
         size=4
     )
     vertex_size = bpy.props.IntProperty(
         name='Vertex Size',
-        default=6,
+        default=8,
         min=0,
         max=30,
     )
+    vertex_line_width = bpy.props.IntProperty(
+        name='Vertex Line Width',
+        default=2,
+        min=1,
+        max=10,
+    )
     edge_line_width = bpy.props.IntProperty(
         name='Edge Line Width',
-        default=1,
+        default=2,
         min=0,
         max=10,
+    )
+    edge_line_stipple = bpy.props.IntProperty(
+        name='Line Stipple',
+        default=5,
+        min=0,
+        max=20,
     )
     face_center_size = bpy.props.IntProperty(
         name='Face Center Size',
@@ -114,6 +123,39 @@ class DrawNearestPreferences(
         min=0,
         max=10,
     )
+
+    use_loop_select = bpy.props.BoolProperty(
+        name='Loop Select',
+        default=True,
+    )
+    loop_select_color = bpy.props.FloatVectorProperty(
+        name='Loop Select Color',
+        default=(0.0, 0.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        subtype='COLOR_GAMMA',
+        size=4
+    )
+    loop_select_line_width = bpy.props.IntProperty(
+        name='Loop Select Line Width',
+        default=3,
+        min=0,
+        max=10,
+    )
+    loop_select_line_stipple = bpy.props.IntProperty(
+        name='Loop Select Line Stipple',
+        default=4,
+        min=0,
+        max=20,
+    )
+    loop_select_face_stipple = bpy.props.IntProperty(
+        name='Loop Select Face Stipple',
+        description='available: 1, 2, 4, 8',
+        default=2,
+        min=1,
+        max=8,
+    )
+
     use_ctypes = bpy.props.BoolProperty(
         name='Use ctypes',
         description='Use ctypes python module (faster)',
@@ -124,13 +166,21 @@ class DrawNearestPreferences(
         split = self.layout.split()
         col = split.column()
         col.prop(self, 'select_color')
-        col.prop(self, 'deselect_color')
-        col = split.column()
         col.prop(self, 'vertex_size')
+        col.prop(self, 'vertex_line_width')
         col.prop(self, 'edge_line_width')
-        col = split.column()
+        col.prop(self, 'edge_line_stipple')
         col.prop(self, 'face_center_size')
         col.prop(self, 'face_center_line_width')
+        col = split.column()
+        col.prop(self, 'use_loop_select')
+        sub = col.column()
+        sub.active = self.use_loop_select
+        sub.prop(self, 'loop_select_color')
+        sub.prop(self, 'loop_select_line_width')
+        col.prop(self, 'loop_select_line_stipple')
+        col.prop(self, 'loop_select_face_stipple')
+        col = split.column()
         col.prop(self, 'use_ctypes')
 
 
@@ -721,6 +771,113 @@ def redraw_areas(context):
             area.tag_redraw()
 
 
+def bglPolygonOffset(viewdist, dist):
+    """screen/glutil.c: 954
+    :type viewdist: float
+    :type dist: float
+    """
+    bgl.glMatrixMode(bgl.GL_PROJECTION)
+    if dist != 0.0:
+        bgl.glGetFloatv(bgl.GL_PROJECTION_MATRIX, bglPolygonOffset.winmat)
+        if bglPolygonOffset.winmat[15] > 0.5:
+            offs = 0.00001 * dist * viewdist
+        else:
+            offs = 0.0005 * dist
+        bglPolygonOffset.winmat[14] -= offs
+        bglPolygonOffset.offset += offs
+    else:
+        bglPolygonOffset.winmat[14] += bglPolygonOffset.offset
+        bglPolygonOffset.offset = 0.0
+    bgl.glLoadMatrixf(bglPolygonOffset.winmat)
+    bgl.glMatrixMode(bgl.GL_MODELVIEW)
+
+bglPolygonOffset.winmat = bgl.Buffer(bgl.GL_FLOAT, 16)
+bglPolygonOffset.offset = 0.0
+
+
+def ED_view3d_polygon_offset(rv3d, dist):
+    """space_view3d/view3d_view.c: 803
+    :type rv3d: bpy.types.RegionView3D
+    :type dist: float
+    """
+    # if rv3d->rflag & RV3D_ZOFFSET_DISABLED:
+    #     return
+    viewdist = rv3d.view_distance
+    if dist != 0.0:
+        if rv3d.view_perspective == 'CAMERA':
+            if not rv3d.is_perspective:
+                winmat = rv3d.window_matrix
+                viewdist = 1.0 / max(abs(winmat[0][0]), abs(winmat[1][1]))
+    bglPolygonOffset(viewdist, dist)
+
+
+def setlinestyle(nr):
+    """screen/glutil.c:270
+    :type nr: int
+    """
+    if nr == 0:
+        bgl.glDisable(bgl.GL_LINE_STIPPLE)
+    else:
+        bgl.glEnable(bgl.GL_LINE_STIPPLE)
+        if False:  # if U.pixelsize > 1.0f
+            bgl.glLineStipple(nr, 0xCCCC)
+        else:
+            bgl.glLineStipple(nr, 0xAAAA)
+
+
+def face_stipple_pattern(size):
+    stipple_quattone_base = np.array(
+            [[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]])
+
+    def conv(arr):
+        arr = [int(''.join([str(k) for k in arr[i][j*8:j*8+8]]), 2)
+           for i in range(32) for j in range(4)]
+        return bgl.Buffer(bgl.GL_BYTE, 128, arr)
+
+    if size >= 8:
+        buf = face_stipple_pattern.x8
+        if not buf:
+            buf = face_stipple_pattern.x8 = \
+                conv(np.repeat(np.repeat(stipple_quattone_base, 8, axis=0), 8,
+                               axis=1))
+    elif size >= 4:
+        buf = face_stipple_pattern.x4
+        if not buf:
+            buf = face_stipple_pattern.x4 = \
+                conv(np.tile(np.repeat(np.repeat(
+                        stipple_quattone_base, 4, axis=0), 4, axis=1), (2, 2)))
+    elif size >= 2:
+        buf = face_stipple_pattern.x2
+        if not buf:
+            buf = face_stipple_pattern.x2 = \
+                conv(np.tile(np.repeat(np.repeat(
+                        stipple_quattone_base, 2, axis=0), 2, axis=1), (4, 4)))
+    else:
+        # glutil.cのものと重ならないようにずらしたもの
+        buf = face_stipple_pattern.x1
+        if not buf:
+            buf = face_stipple_pattern.x1 = \
+                conv(np.tile(np.roll(stipple_quattone_base, 2, 1), (8, 8)))
+    return buf
+
+face_stipple_pattern.x1 = None
+face_stipple_pattern.x2 = None
+face_stipple_pattern.x4 = None
+face_stipple_pattern.x8 = None
+
+
+def setpolygontone(enable, size=1):
+    """
+    :type enable: bool
+    :type size: int
+    """
+    if enable:
+        bgl.glEnable(bgl.GL_POLYGON_STIPPLE)
+        bgl.glPolygonStipple(face_stipple_pattern(size))
+    else:
+        bgl.glDisable(bgl.GL_POLYGON_STIPPLE)
+
+
 class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
     bl_label = 'Draw Nearest Element'
     bl_idname = 'view3d.draw_nearest_element'
@@ -761,16 +918,19 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         v3d = context.space_data
 
         prop = space_prop.get(v3d)
-        if not prop.enable:
+        if not prop.enable or v3d.viewport_shade == 'RENDERED':
             return
 
         mco = (event.mouse_x, event.mouse_y)
+        # target: [type, vert_coords, median]
         target = data['target']
+        # targets: [vert_coords, edge_coords, face_coords, medians]
+        targets = data['targets']
 
         draw = data['draw_flags'].get(rv3d, True)
         data['draw_flags'][rv3d] = False
         if draw:
-            if context.mode != 'EDIT_MESH' or not target:
+            if context.mode != 'EDIT_MESH' or not (target or targets):
                 draw = False
             elif data['mco'] != mco:  # 別のOperatorがRUNNING_MODAL
                 draw = False
@@ -786,72 +946,148 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         vert_size = prefs.vertex_size / 2
         vnum = 16
 
-        target_type = target[0]
-        selected = target[1]
-        coords = [mat * v for v in target[2]]
-        median = mat * target[3]
-
         glsettings = GLSettings(context)
         glsettings.push()
         bgl.glEnable(bgl.GL_BLEND)
-        bgl.glDisable(bgl.GL_DEPTH_TEST)
-        if selected:
-            bgl.glColor4f(*prefs.deselect_color)
-        else:
+        bgl.glLineWidth(1)
+
+        if target:
+            bgl.glDisable(bgl.GL_DEPTH_TEST)
             bgl.glColor4f(*prefs.select_color)
 
-        # Vertex
-        if target_type == bmesh.types.BMVert:
-            if vert_size:
-                vec = project(region, rv3d, coords[0])
-                draw_circle(vec[0], vec[1], vert_size, vnum, poly=True)
+            target_type = target[0]
+            coords = [mat * v for v in target[1]]
+            median = mat * target[2]
 
-        # Edge
-        elif target_type == bmesh.types.BMEdge:
-            # Line
-            if prefs.edge_line_width:
-                glsettings.prepare_3d()
-                bgl.glLineWidth(prefs.edge_line_width)
-                bgl.glBegin(bgl.GL_LINES)
-                bgl.glVertex3f(*coords[0])
-                bgl.glVertex3f(*coords[1])
-                bgl.glEnd()
-                bgl.glLineWidth(1)
-                glsettings.restore_3d()
+            # Vertex
+            if target_type == bmesh.types.BMVert:
+                if vert_size:
+                    bgl.glLineWidth(prefs.vertex_line_width)
+                    glsettings.prepare_2d()
+                    vec = project(region, rv3d, coords[0])
+                    draw_circle(vec[0], vec[1], vert_size, vnum, poly=False)
+                    glsettings.restore_2d()
+                    bgl.glLineWidth(1)
 
-            # Verts
-            if vert_size:
-                coordsR = [project(region, rv3d, v) for v in coords]
-                draw_circle(coordsR[0][0], coordsR[0][1], vert_size, vnum,
-                            poly=True)
-                draw_circle(coordsR[1][0], coordsR[1][1], vert_size, vnum,
-                            poly=True)
+            # Edge
+            elif target_type == bmesh.types.BMEdge:
+                # Line
+                if prefs.edge_line_width:
+                    bgl.glLineWidth(prefs.edge_line_width)
+                    setlinestyle(prefs.edge_line_stipple)
+                    bgl.glBegin(bgl.GL_LINES)
+                    bgl.glVertex3f(*coords[0])
+                    bgl.glVertex3f(*coords[1])
+                    bgl.glEnd()
+                    bgl.glLineWidth(1)
+                    setlinestyle(0)
 
-        # Face
+                # Verts
+                if vert_size:
+                    bgl.glLineWidth(prefs.vertex_line_width)
+                    glsettings.prepare_2d()
+                    coordsR = [project(region, rv3d, v) for v in coords]
+                    draw_circle(coordsR[0][0], coordsR[0][1], vert_size, vnum,
+                                poly=False)
+                    draw_circle(coordsR[1][0], coordsR[1][1], vert_size, vnum,
+                                poly=False)
+                    glsettings.restore_2d()
+                    bgl.glLineWidth(1)
+
+            # Face
+            else:
+                # Edges
+                if prefs.edge_line_width:
+                    bgl.glLineWidth(prefs.edge_line_width)
+                    setlinestyle(prefs.edge_line_stipple)
+                    bgl.glBegin(bgl.GL_LINE_LOOP)
+                    for vec in coords:
+                        bgl.glVertex3f(*vec)
+                    bgl.glEnd()
+                    bgl.glLineWidth(1)
+                    setlinestyle(0)
+
+                # Center
+                if prefs.face_center_size and prefs.face_center_line_width:
+                    glsettings.prepare_2d()
+                    bgl.glLineWidth(prefs.face_center_line_width)
+                    r2 = prefs.face_center_size / 2
+                    cent = project(region, rv3d, median)
+                    draw_box(cent[0] - r2, cent[1] - r2, r2 * 2, r2 * 2)
+                    bgl.glLineWidth(1)
+                    glsettings.restore_2d()
+
+                # Verts
+                if vert_size:
+                    bgl.glLineWidth(prefs.vertex_line_width)
+                    glsettings.prepare_2d()
+                    coordsR = [project(region, rv3d, v) for v in coords]
+                    for vec in coordsR:
+                        draw_circle(vec[0], vec[1], vert_size, vnum, poly=False)
+                    glsettings.restore_2d()
+                    bgl.glLineWidth(1)
+
         else:
-            if prefs.edge_line_width:
-                # Outline
-                glsettings.prepare_3d()
-                bgl.glLineWidth(prefs.edge_line_width)
-                bgl.glBegin(bgl.GL_LINE_LOOP)
-                for vec in coords:
-                    bgl.glVertex3f(*vec)
+            # draw loop selection
+
+            if (v3d.viewport_shade in {'BOUNDBOX', 'WIREFRAME'} or
+                    v3d.viewport_shade == 'SOLID' and
+                    not v3d.use_occlude_geometry):
+                depth = False
+            else:
+                depth = True
+            if depth:
+                bgl.glEnable(bgl.GL_DEPTH_TEST)
+                bgl.glDepthMask(0)
+            else:
+                bgl.glDisable(bgl.GL_DEPTH_TEST)
+            bgl.glColor4f(*prefs.loop_select_color)
+
+            glsettings.prepare_3d()
+
+            vert_coords, edge_coords, face_coords, median_coords = targets
+
+            if face_coords:
+                if depth:
+                    ED_view3d_polygon_offset(rv3d, 1)
+                setpolygontone(True, prefs.loop_select_face_stipple)
+                bgl.glBegin(bgl.GL_TRIANGLES)
+                for v_coords in face_coords:
+                    if len(v_coords) == 3:
+                        tris = [(0, 1, 2)]
+                    elif len(v_coords) == 4:
+                        tris = [(0, 1, 2), (0, 2, 3)]
+                    else:
+                        tris = mathutils.geometry.tessellate_polygon(
+                                [v_coords])
+                    for tri in tris:
+                        for i in tri:
+                            v = mat * v_coords[i]
+                            bgl.glVertex3f(*v)
                 bgl.glEnd()
-                glsettings.restore_3d()
+                setpolygontone(False)
+                if depth:
+                    ED_view3d_polygon_offset(rv3d, 0)
 
-            # Center
-            if prefs.face_center_size and prefs.face_center_line_width:
-                bgl.glLineWidth(prefs.face_center_line_width)
-                r2 = prefs.face_center_size / 2
-                cent = project(region, rv3d, median)
-                draw_box(cent[0] - r2, cent[1] - r2, r2 * 2, r2 * 2)
+            elif edge_coords:
+                if depth:
+                    ED_view3d_polygon_offset(rv3d, 1)
+                bgl.glLineWidth(prefs.loop_select_line_width)
+                setlinestyle(prefs.loop_select_line_stipple)
+                bgl.glBegin(bgl.GL_LINES)
+                for v_coords in edge_coords:
+                    for vec in v_coords:
+                        bgl.glVertex3f(*(mat * vec))
+                bgl.glEnd()
+                setlinestyle(0)
                 bgl.glLineWidth(1)
+                if depth:
+                    ED_view3d_polygon_offset(rv3d, 0)
 
-            # Verts
-            if vert_size:
-                coordsR = [project(region, rv3d, v) for v in coords]
-                for vec in coordsR:
-                    draw_circle(vec[0], vec[1], vert_size, vnum, poly=True)
+            if depth:
+                bgl.glDepthMask(1)
+
+            glsettings.restore_3d()
 
         glsettings.pop()
         glsettings.font_size()
@@ -873,20 +1109,91 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             if win not in exist_windows:
                 del cls.data[win]
 
-    def find_nearest(self, context_dict, bm, mco_region, use_ctypes=False):
-        select_history = list(bm.select_history)
-        active_face = bm.faces.active
-
+    def get_selected(self, bm, use_ctypes=False):
+        """ctypesを使う場合はインデックスのリスト、
+        そうでないならBMElemのリストを返す
+        """
         if use_ctypes:
             bm.verts.ensure_lookup_table()
             bm.edges.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
-            bm.verts.index_update()
-            bm.edges.index_update()
-            bm.faces.index_update()
             selected_verts = get_selected_indices(bm, 'VERT')
             selected_edges = get_selected_indices(bm, 'EDGE')
             selected_faces = get_selected_indices(bm, 'FACE')
+
+        else:
+            selected_faces = {elem for elem in bm.faces if elem.select}
+            selected_edges = {elem for elem in bm.edges if elem.select}
+            selected_verts = {elem for elem in bm.verts if elem.select}
+        return selected_verts, selected_edges, selected_faces
+
+    def find_preselection_loop_edgering(self, context, context_dict,
+                                        mco_region, ring, toggle, use_ctypes):
+        mesh = context.active_object.data
+        bm = bmesh.from_edit_mesh(mesh)
+        if use_ctypes:
+            bm.verts.index_update()
+            bm.edges.index_update()
+            bm.faces.index_update()
+        if toggle:
+            verts_pre, edges_pre, faces_pre = self.get_selected(bm, use_ctypes)
+            if use_ctypes:
+                verts_pre = [bm.verts[i] for i in verts_pre]
+                edges_pre = [bm.edges[i] for i in edges_pre]
+                faces_pre = [bm.faces[i] for i in faces_pre]
+        else:
+            bpy.ops.mesh.select_all(context_dict, True, action='DESELECT')
+        if ring:
+            r = bpy.ops.mesh.edgering_select(
+                    context_dict, 'INVOKE_DEFAULT', True, extend=False,
+                    deselect=False, toggle=toggle, ring=True)
+        else:
+            r = bpy.ops.mesh.loop_select(
+                    context_dict, 'INVOKE_DEFAULT', True, extend=False,
+                    deselect=False, toggle=toggle, ring=False)
+        if r == {'CANCELLED'}:
+            if not toggle:
+                bpy.ops.ed.undo()
+            return [], [], [], []
+
+        verts, edges, faces = self.get_selected(bm, use_ctypes)
+        if use_ctypes:
+            verts = [bm.verts[i] for i in verts]
+            edges = [bm.edges[i] for i in edges]
+            faces = [bm.faces[i] for i in faces]
+
+        if toggle:
+            # 選択/非選択が切り替わったもののみ強調表示
+            verts = set(verts) ^ set(verts_pre)
+            edges = set(edges) ^ set(edges_pre)
+            if ring and bm.select_mode & {'FACE', 'VERT'}:
+                faces = set(faces) ^ set(faces_pre)
+            else:
+                faces = []
+
+        vert_coords = [v.co.copy() for v in verts]
+        edge_coords = [[v.co.copy() for v in e.verts] for e in edges]
+        # if bm.select_mode & {'FACE'}:
+        face_coords = [[v.co.copy() for v in f.verts] for f in faces]
+        medians = [f.calc_center_median() for f in faces]
+
+        if not toggle:
+            bpy.ops.ed.undo()  # mesh.select_all
+        if r == {'FINISHED'}:  # loop_select / edgering_select
+            bpy.ops.ed.undo()
+
+        return vert_coords, edge_coords, face_coords, medians
+
+    def find_nearest(self, context_dict, bm, mco_region, use_ctypes):
+        select_history = list(bm.select_history)
+        active_face = bm.faces.active
+
+        selected_verts, selected_edges, selected_faces = self.get_selected(
+                bm, use_ctypes)
+        if use_ctypes:
+            bm.verts.index_update()
+            bm.edges.index_update()
+            bm.faces.index_update()
 
             def test_select(elem):
                 if isinstance(elem, bmesh.types.BMVert):
@@ -897,10 +1204,6 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                     return elem.index in selected_faces
 
         else:
-            selected_faces = {elem for elem in bm.faces if elem.select}
-            selected_edges = {elem for elem in bm.edges if elem.select}
-            selected_verts = {elem for elem in bm.verts if elem.select}
-
             def test_select(elem):
                 if isinstance(elem, bmesh.types.BMVert):
                     return elem in selected_verts
@@ -1027,6 +1330,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         mco_prev = data.get('mco')
         data['mco'] = mco
         data['target'] = None
+        data['targets'] = None
         data['draw_flags'] = {}
 
         if event.type == 'INBETWEEN_MOUSEMOVE' or context.mode != 'EDIT_MESH':
@@ -1054,40 +1358,76 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         if not (area and region):
             return {'PASS_THROUGH'}
 
+        v3d = area.spaces.active
+        if v3d.viewport_shade == 'RENDERED':
+            return {'PASS_THROUGH'}
+
         bm = bmesh.from_edit_mesh(context.active_object.data)
         context_dict = context.copy()
         context_dict.update({'area': area, 'region': region})
         mco_region = [mco[0] - region.x, mco[1] - region.y]
 
-        if test_platform() and prefs.use_ctypes:
-            context_dict_bak = context_py_dict_get(context)
-            context_py_dict_set(context, context_dict)
-            find, (eve, eed, efa) = unified_findnearest(
-                context, bm, mco_region)
-            context_py_dict_set(context, context_dict_bak)
-            if find:
-                elem = eve or eed or efa
-            else:
-                elem = None
-        else:
-            elem = self.find_nearest(context_dict, bm, mco_region,
-                                     prefs.use_ctypes)
-
-        if elem:
-            if isinstance(elem, bmesh.types.BMVert):
-                coords = [elem.co.copy()]
-                median = elem.co.copy()
-            else:
-                coords = [v.co.copy() for v in elem.verts]
-                if isinstance(elem, bmesh.types.BMEdge):
-                    median = (coords[0] + coords[1]) / 2
+        shift = event.shift
+        ctrl = event.ctrl
+        alt = event.alt
+        if event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'}:
+            if event.value == 'PRESS':
+                shift = True
+            elif event.value == 'RELEASE':
+                shift = False
+        if event.type in {'LEFT_CTRL', 'RIGHT_CTRL'}:
+            if event.value == 'PRESS':
+                ctrl = True
+            elif event.value == 'RELEASE':
+                ctrl = False
+        if event.type in {'LEFT_ALT', 'RIGHT_ALT'}:
+            if event.value == 'PRESS':
+                alt = True
+            elif event.value == 'RELEASE':
+                alt = False
+        if ctrl and alt:  # mesh.edgering_select
+            mode = 'edgering'
+        elif alt:  # mesh.loop_select
+            mode = 'loop'
+        else:  # view3d.select
+            mode = 'select'
+        if mode == 'select':
+            if test_platform() and prefs.use_ctypes:
+                context_dict_bak = context_py_dict_get(context)
+                context_py_dict_set(context, context_dict)
+                find, (eve, eed, efa) = unified_findnearest(
+                    context, bm, mco_region)
+                context_py_dict_set(context, context_dict_bak)
+                if find:
+                    elem = eve or eed or efa
                 else:
-                    median = elem.calc_center_median()
+                    elem = None
+            else:
+                elem = self.find_nearest(context_dict, bm, mco_region,
+                                         prefs.use_ctypes)
+            if elem:
+                if isinstance(elem, bmesh.types.BMVert):
+                    coords = [elem.co.copy()]
+                    median = elem.co.copy()
+                else:
+                    coords = [v.co.copy() for v in elem.verts]
+                    if isinstance(elem, bmesh.types.BMEdge):
+                        median = (coords[0] + coords[1]) / 2
+                    else:
+                        median = elem.calc_center_median()
+                data['target'] = [type(elem), coords, median]
 
-            data['target'] = [type(elem), elem.select, coords, median]
-
-        else:
-            data['target'] = None
+        elif prefs.use_loop_select:
+            del bm
+            ring = mode == 'edgering'
+            toggle = shift
+            vert_coords, edge_coords, face_coords, medians = \
+                self.find_preselection_loop_edgering(
+                    context, context_dict, mco_region, ring, toggle,
+                        prefs.use_ctypes)
+            if vert_coords or edge_coords or face_coords:
+                data['targets'] = [vert_coords, edge_coords, face_coords,
+                                   medians]
 
         # 存在しないrv3dを除去し、全ての値をTrueとする
         data['draw_flags'] = {}
@@ -1127,10 +1467,11 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             self.data[win] = d = {}
             d['event'] = event
             d['target'] = None
+            d['targets'] = None
             d['draw_flags'] = {}
             if not self.handle:
                 self.__class__.handle = bpy.types.SpaceView3D.draw_handler_add(
-                    self.draw_func, (context,), 'WINDOW', 'POST_PIXEL')
+                    self.draw_func, (context,), 'WINDOW', 'POST_VIEW')
             context.window_manager.modal_handler_add(self)
 
             return {'RUNNING_MODAL'}
@@ -1145,11 +1486,13 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 
 
 def menu_func(self, context):
+    prop = space_prop.get(context.space_data)
     self.layout.separator()
     col = self.layout.column(align=True)
     """:type: bpy.types.UILayout"""
-    prop = space_prop.get(context.space_data)
-    col.active = context.mode == 'EDIT_MESH'
+    v3d = context.space_data
+    if context.mode != 'EDIT_MESH' or v3d.viewport_shade == 'RENDERED':
+        col.active = False
     col.prop(prop, 'enable', text='Draw Nearest')
     # col.active = context.window in VIEW3D_OT_draw_nearest_element.data
     # col.operator('view3d.draw_nearest_element', text='Draw Nearest')
