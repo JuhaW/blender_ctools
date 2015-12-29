@@ -182,8 +182,8 @@ class DrawNearestPreferences(
         sub.active = self.use_loop_select
         sub.prop(self, 'loop_select_color')
         sub.prop(self, 'loop_select_line_width')
-        col.prop(self, 'loop_select_line_stipple')
-        col.prop(self, 'loop_select_face_stipple')
+        sub.prop(self, 'loop_select_line_stipple')
+        sub.prop(self, 'loop_select_face_stipple')
         col = split.column()
         col.prop(self, 'redraw_all')
         col.prop(self, 'use_ctypes')
@@ -1049,6 +1049,10 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             use_depth = False
         else:
             use_depth = True
+        # if target:
+        #     if (region.x <= mco[0] <= region.x + region.width and
+        #             region.y <= mco[1] <= region.y + region.height):
+        #         use_depth = False
 
         if target:
             bgl.glDisable(bgl.GL_DEPTH_TEST)
