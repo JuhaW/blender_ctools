@@ -156,6 +156,11 @@ class DrawNearestPreferences(
         max=8,
     )
 
+    redraw_all = bpy.props.BoolProperty(
+        name='Redraw All 3D View',
+        description='If enable, redraw all 3D view areas of current screen',
+        default=True,
+    )
     use_ctypes = bpy.props.BoolProperty(
         name='Use ctypes',
         description='Use ctypes python module (faster)',
@@ -181,6 +186,7 @@ class DrawNearestPreferences(
         col.prop(self, 'loop_select_line_stipple')
         col.prop(self, 'loop_select_face_stipple')
         col = split.column()
+        col.prop(self, 'redraw_all')
         col.prop(self, 'use_ctypes')
 
 
@@ -765,10 +771,17 @@ def get_selected_indices(bm, elem='VERT'):
 ###############################################################################
 # Main
 ###############################################################################
-def redraw_areas(context):
+def redraw_areas(context, force=False):
+    actob = context.active_object
     for area in context.screen.areas:
         if area.type == 'VIEW_3D':
-            area.tag_redraw()
+            v3d = area.spaces.active
+            prop = space_prop.get(v3d)
+            if force:
+                area.tag_redraw()
+            elif prop.enable and not v3d.viewport_shade == 'RENDERED':
+                if any([a & b for a, b in zip(actob.layers, v3d.layers)]):
+                    area.tag_redraw()
 
 
 def bglPolygonOffset(viewdist, dist):
@@ -913,6 +926,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         prefs = DrawNearestPreferences.get_prefs()
         data = cls.data[win]
         event = data['event']
+        area = context.area
         region = context.region
         rv3d = context.region_data
         v3d = context.space_data
@@ -934,13 +948,18 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 draw = False
             elif data['mco'] != mco:  # 別のOperatorがRUNNING_MODAL
                 draw = False
-            elif not (region.x <= mco[0] <= region.x + region.width and
-                      region.y <= mco[1] <= region.y + region.height):
-                draw = False
+            elif not prefs.redraw_all:
+                # if not (region.x <= mco[0] <= region.x + region.width and
+                #         region.y <= mco[1] <= region.y + region.height):
+                if not (area.x <= mco[0] <= area.x + area.width and
+                        area.y <= mco[1] <= area.y + area.height):
+                    draw = False
         if not draw:
             return
 
         ob = context.active_object
+        if not ob:
+            return
         mat = ob.matrix_world
 
         vert_size = prefs.vertex_size / 2
@@ -1283,7 +1302,6 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         :param event:
         :type event: bpy.types.Event
         """
-
         self.remove_invalid_windows()
 
         # 終了
@@ -1291,7 +1309,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         if win not in self.data:
             if not self.data:
                 self.remove_handler()
-            redraw_areas(context)
+            redraw_areas(context, True)
             return {'FINISHED'}
 
         for area in context.screen.areas:
@@ -1348,6 +1366,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         shift = event.shift
         ctrl = event.ctrl
         alt = event.alt
+        oskey = event.oskey
         if event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'}:
             if event.value == 'PRESS':
                 shift = True
@@ -1363,12 +1382,24 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 alt = True
             elif event.value == 'RELEASE':
                 alt = False
-        if ctrl and alt:  # mesh.edgering_select
-            mode = 'edgering'
-        elif alt:  # mesh.loop_select
-            mode = 'loop'
-        else:  # view3d.select
+        if event.type in {'OSKEY'}:
+            if event.value == 'PRESS':
+                oskey = True
+            elif event.value == 'RELEASE':
+                oskey = False
+
+        mode = ''
+        for kmi in self.keymap_items['loop_select']:
+            if (kmi.shift == shift and kmi.ctrl == ctrl and
+                    kmi.alt == alt and kmi.oskey == oskey):
+                mode = 'loop_select'
+        for kmi in self.keymap_items['edgering_select']:
+            if (kmi.shift == shift and kmi.ctrl == ctrl and
+                    kmi.alt == alt and kmi.oskey == oskey):
+                mode = 'edgering_select'
+        if not mode:
             mode = 'select'
+
         if mode == 'select':
             if test_platform() and prefs.use_ctypes:
                 context_dict_bak = context_py_dict_get(context)
@@ -1396,33 +1427,66 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 data['target'] = [type(elem), coords, median]
 
         elif prefs.use_loop_select:
-            del bm
-            ring = mode == 'edgering'
+            ring = mode == 'edgering_select'
             vert_coords, edge_coords, face_coords, medians = \
                 self.find_preselection_loop_edgering(
                     context, context_dict, mco_region, ring, prefs.use_ctypes)
-            if vert_coords or edge_coords or face_coords:
+            if vert_coords:
                 data['targets'] = [vert_coords, edge_coords, face_coords,
                                    medians]
 
         # 存在しないrv3dを除去し、全ての値をTrueとする
         data['draw_flags'] = {}
-        for area in context.window.screen.areas:
-            if area.type == 'VIEW_3D':
-                space_data = area.spaces.active
+        for sa in context.window.screen.areas:
+            if sa.type == 'VIEW_3D':
+                space_data = sa.spaces.active
                 """:type: bpy.types.SpaceView3D"""
                 data['draw_flags'][space_data.region_3d] = True
                 for rv3d in space_data.region_quadviews:
                     data['draw_flags'][rv3d] = True
 
-        redraw_areas(context)
+        # 再描画
+        if data['target'] or data['targets']:
+            # ctypesを使わない、又はtargetsを探す場合は
+            # オペレータを使用しているのでどの道再描画される
+            if prefs.use_ctypes and data['target']:
+                redraw = False
+                if data['target']:
+                    if data['target'] != data['target_prev']:
+                        redraw = True
+                # else:
+                #     if not data['targets_prev']:
+                #         redraw = True
+                #     else:
+                #         vert_coords_prev = data['targets_prev'][0]
+                #         if len(vert_coords) != len(vert_coords_prev):
+                #             redraw = True
+                #         else:
+                #             for v1, v2 in zip(vert_coords, vert_coords_prev):
+                #                 if v1 != v2:
+                #                     redraw = True
+                #                     break
+                if redraw:
+                    if prefs.redraw_all:
+                        redraw_areas(context)
+                    else:
+                        area.tag_redraw()
+        else:
+            if self.fond_area_prev:
+                self.fond_area_prev.tag_redraw()
+        data['target_prev'] = data['target']
+        data['targets_prev'] = data['targets']
+        if data['target'] or data['targets']:
+            self.fond_area_prev = area
+        else:
+            self.fond_area_prev = None
 
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
         if self.type == 'KILL':
             self.data.clear()
-            context.area.tag_redraw()
+            redraw_areas(context, True)
             return {'FINISHED'}
 
         win = context.window
@@ -1434,6 +1498,19 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 type = 'DISABLE'
             else:
                 type = 'ENABLE'
+
+        self.__class__.keymap_items = {
+            'loop_select': [], 'edgering_select': []}
+        kc = bpy.context.window_manager.keyconfigs.user
+        km = kc.keymaps['Mesh']
+        for kmi in km.keymap_items:
+            if kmi.type == 'SELECTMOUSE':
+                if kmi.idname in {'mesh.loop_select', 'mesh.edgering_select'}:
+                    if kmi.properties.ring:
+                        self.keymap_items['edgering_select'].append(kmi)
+                    else:
+                        self.keymap_items['loop_select'].append(kmi)
+
         if type == 'DISABLE':
             # modalを終了すると自動起動の為の監視関数が必要になる為何もしない
             return {'FINISHED'}
@@ -1443,11 +1520,14 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             self.data[win] = d = {}
             d['event'] = event
             d['target'] = None
+            d['target_prev'] = None
             d['targets'] = None
+            d['targets_prev'] = None
             d['draw_flags'] = {}
             if not self.handle:
                 self.__class__.handle = bpy.types.SpaceView3D.draw_handler_add(
                     self.draw_func, (context,), 'WINDOW', 'POST_VIEW')
+            self.fond_area_prev = False
             context.window_manager.modal_handler_add(self)
 
             return {'RUNNING_MODAL'}

@@ -2463,19 +2463,26 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
         area, region = vawm.mouse_area_region(event.mco, find_reverse=True)
         if area and area.type not in ('VIEW_3D', 'IMAGE_EDITOR'):
             area = None
-        if do_redraw and area and region:
-            region.tag_redraw()
-        if do_redraw_panel and area:
-            for ar in area.regions:
-                if ar.type == 'UI':
-                    ar.tag_redraw()
+        if area:
+            space = area.spaces.active
+            prop = space_prop.get(space, 'region_ruler')
+            if prop.enable:
+                if do_redraw and region:
+                    region.tag_redraw()
+                if do_redraw_panel:
+                    for ar in area.regions:
+                        if ar.type == 'UI':
+                            ar.tag_redraw()
         # 再描画: prev region
         prev_region = vawm.region_from_id(data.prev_region_id, context.screen)
         prev_area = vawm.get_area_from_data(prev_region)
         if prev_area and prev_area.type not in ('VIEW_3D', 'IMAGE_EDITOR'):
             prev_area = None
         if prev_area and prev_region and prev_region != region:
-            prev_region.tag_redraw()
+            space = prev_area.spaces.active
+            prop = space_prop.get(space, 'region_ruler')
+            if prop.enable:
+                prev_region.tag_redraw()
 
         if region:
             data.prev_region_id = region.id
