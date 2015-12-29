@@ -43,7 +43,7 @@ import numpy as np
 import bpy
 import bmesh
 import mathutils
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 import bgl
 import blf
 from bpy_extras.view3d_utils import location_3d_to_region_2d as project
@@ -823,6 +823,25 @@ def ED_view3d_polygon_offset(rv3d, dist):
     bglPolygonOffset(viewdist, dist)
 
 
+def polygon_offset_pers_mat(rv3d, dist):
+    viewdist = rv3d.view_distance
+    if dist != 0.0:
+        if rv3d.view_perspective == 'CAMERA':
+            if not rv3d.is_perspective:
+                winmat = rv3d.window_matrix
+                viewdist = 1.0 / max(abs(winmat[0][0]), abs(winmat[1][1]))
+
+    winmat = rv3d.window_matrix.copy()
+    if dist != 0.0:
+        if winmat.col[3][3] > 0.5:
+            offs = 0.00001 * dist * viewdist
+        else:
+            offs = 0.0005 * dist
+        winmat.col[3][2] -= offs
+
+    return winmat * rv3d.view_matrix
+
+
 def setlinestyle(nr):
     """screen/glutil.c:270
     :type nr: int
@@ -888,6 +907,57 @@ def setpolygontone(enable, size=1):
         bgl.glPolygonStipple(face_stipple_pattern(size))
     else:
         bgl.glDisable(bgl.GL_POLYGON_STIPPLE)
+
+
+def get_depth(x, y, fatten=0):
+    size = fatten * 2 + 1
+    buf = bgl.Buffer(bgl.GL_FLOAT, size ** 2)
+    bgl.glReadPixels(x - fatten, y - fatten, size, size,
+                     bgl.GL_DEPTH_COMPONENT, bgl.GL_FLOAT, buf)
+    return list(buf)
+
+
+PROJECT_MIN_NUMBER = 1E-5
+
+
+def project(region, rv3d, vec):
+    """World Coords (3D) -> Window Coords (3D).
+    Window座標は左手系で、Zのクリッピング範囲は0~1。
+    """
+    v = rv3d.perspective_matrix * vec.to_4d()
+    if abs(v[3]) > PROJECT_MIN_NUMBER:
+        v /= v[3]
+    x = (1 + v[0]) * region.width * 0.5
+    y = (1 + v[1]) * region.height * 0.5
+    z = (1 + v[2]) * 0.5
+    return Vector((x, y, z))
+
+
+def project_v3(sx, sy, persmat, vec) -> "3D Vector":
+    """World Coords -> Window Coords. projectより少しだけ速い。"""
+    v = persmat * vec.to_4d()
+    if abs(v[3]) > PROJECT_MIN_NUMBER:
+        v /= v[3]
+    x = (1 + v[0]) * sx * 0.5
+    y = (1 + v[1]) * sy * 0.5
+    z = (1 + v[2]) * 0.5
+    return Vector((x, y, z))
+
+
+def unproject(region, rv3d, vec, depth_location:"world coords"=None):
+    """Window Coords (2D / 3D) -> World Coords (3D).
+    Window座標は左手系で、Zのクリッピング範囲は0~1。
+    """
+    x = vec[0] * 2.0 / region.width - 1.0
+    y = vec[1] * 2.0 / region.height - 1.0
+    if depth_location:
+        z = (project(region, rv3d, depth_location)[2] - 0.5) * 2
+    else:
+        z = 0.0 if len(vec) == 2 else (vec[2] - 0.5) * 2
+    v = rv3d.perspective_matrix.inverted() * Vector((x, y, z, 1.0))
+    if abs(v[3]) > PROJECT_MIN_NUMBER:
+        v /= v[3]
+    return v.to_3d()
 
 
 class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
@@ -956,6 +1026,9 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         if not draw:
             return
 
+        # use_depth = get_depth(mco[0], mco[1], 1)
+        # print(['{:.12f}'.format(f) for f in use_depth])
+
         ob = context.active_object
         if not ob:
             return
@@ -967,7 +1040,15 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         glsettings = GLSettings(context)
         glsettings.push()
         bgl.glEnable(bgl.GL_BLEND)
+        bgl.glDepthMask(0)
         bgl.glLineWidth(1)
+
+        if (v3d.viewport_shade in {'BOUNDBOX', 'WIREFRAME'} or
+                v3d.viewport_shade == 'SOLID' and
+                not v3d.use_occlude_geometry):
+            use_depth = False
+        else:
+            use_depth = True
 
         if target:
             bgl.glDisable(bgl.GL_DEPTH_TEST)
@@ -977,86 +1058,70 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             coords = [mat * v for v in target[1]]
             median = mat * target[2]
 
-            # Vertex
-            if target_type == bmesh.types.BMVert:
-                if vert_size:
-                    bgl.glLineWidth(prefs.vertex_line_width)
-                    glsettings.prepare_2d()
-                    vec = project(region, rv3d, coords[0])
-                    draw_circle(vec[0], vec[1], vert_size, vnum, poly=False)
-                    glsettings.restore_2d()
-                    bgl.glLineWidth(1)
-
-            # Edge
-            elif target_type == bmesh.types.BMEdge:
-                # Line
-                if prefs.edge_line_width:
-                    bgl.glLineWidth(prefs.edge_line_width)
-                    setlinestyle(prefs.edge_line_stipple)
-                    bgl.glBegin(bgl.GL_LINES)
-                    bgl.glVertex3f(*coords[0])
-                    bgl.glVertex3f(*coords[1])
-                    bgl.glEnd()
-                    bgl.glLineWidth(1)
-                    setlinestyle(0)
-
-                # Verts
-                if vert_size:
-                    bgl.glLineWidth(prefs.vertex_line_width)
-                    glsettings.prepare_2d()
-                    coordsR = [project(region, rv3d, v) for v in coords]
-                    draw_circle(coordsR[0][0], coordsR[0][1], vert_size, vnum,
-                                poly=False)
-                    draw_circle(coordsR[1][0], coordsR[1][1], vert_size, vnum,
-                                poly=False)
-                    glsettings.restore_2d()
-                    bgl.glLineWidth(1)
+            offs_pmat = polygon_offset_pers_mat(rv3d, 1)
+            def depth_test(vec):
+                v = project_v3(region.width, region.height,
+                               offs_pmat, vec)
+                x = int(v[0]) + region.x
+                y = int(v[1]) + region.y
+                depth3x3 = get_depth(x, y, 1)
+                if not (0.0 <= v[2] <= 1.0):
+                    return False
+                for f in depth3x3:
+                    if v[2] <= f:
+                        return True
+                return False
 
             # Face
-            else:
-                # Edges
+            if target_type == bmesh.types.BMFace:
+                if prefs.face_center_size and prefs.face_center_line_width:
+                    glsettings.prepare_2d()
+                    bgl.glLineWidth(prefs.face_center_line_width)
+                    if not use_depth or depth_test(median):
+                        r2 = prefs.face_center_size / 2
+                        v = project(region, rv3d, median)
+                        draw_box(v[0] - r2, v[1] - r2, r2 * 2, r2 * 2)
+                    bgl.glLineWidth(1)
+                    glsettings.restore_2d()
+
+            # Edges (draw with 3d coordinates and GL_DEPTH_TEST)
+            if target_type in {bmesh.types.BMEdge, bmesh.types.BMFace}:
                 if prefs.edge_line_width:
                     bgl.glLineWidth(prefs.edge_line_width)
                     setlinestyle(prefs.edge_line_stipple)
-                    bgl.glBegin(bgl.GL_LINE_LOOP)
+                    if use_depth:
+                        bgl.glEnable(bgl.GL_DEPTH_TEST)
+                        ED_view3d_polygon_offset(rv3d, 1)
+                    if target_type == bmesh.types.BMEdge:
+                        bgl.glBegin(bgl.GL_LINES)
+                    else:
+                        bgl.glBegin(bgl.GL_LINE_LOOP)
                     for vec in coords:
                         bgl.glVertex3f(*vec)
                     bgl.glEnd()
                     bgl.glLineWidth(1)
                     setlinestyle(0)
+                    if use_depth:
+                        bgl.glDisable(bgl.GL_DEPTH_TEST)
+                        ED_view3d_polygon_offset(rv3d, 0)
 
-                # Center
-                if prefs.face_center_size and prefs.face_center_line_width:
-                    glsettings.prepare_2d()
-                    bgl.glLineWidth(prefs.face_center_line_width)
-                    r2 = prefs.face_center_size / 2
-                    cent = project(region, rv3d, median)
-                    draw_box(cent[0] - r2, cent[1] - r2, r2 * 2, r2 * 2)
-                    bgl.glLineWidth(1)
-                    glsettings.restore_2d()
-
-                # Verts
-                if vert_size:
-                    bgl.glLineWidth(prefs.vertex_line_width)
-                    glsettings.prepare_2d()
-                    coordsR = [project(region, rv3d, v) for v in coords]
-                    for vec in coordsR:
-                        draw_circle(vec[0], vec[1], vert_size, vnum, poly=False)
-                    glsettings.restore_2d()
-                    bgl.glLineWidth(1)
+            # Verts
+            if vert_size:
+                bgl.glLineWidth(prefs.vertex_line_width)
+                glsettings.prepare_2d()
+                for vec in coords:
+                    if not use_depth or depth_test(vec):
+                        v = project(region, rv3d, vec)
+                        draw_circle(v[0], v[1], vert_size, vnum,
+                                    poly=False)
+                glsettings.restore_2d()
+                bgl.glLineWidth(1)
 
         else:
             # draw loop selection
 
-            if (v3d.viewport_shade in {'BOUNDBOX', 'WIREFRAME'} or
-                    v3d.viewport_shade == 'SOLID' and
-                    not v3d.use_occlude_geometry):
-                depth = False
-            else:
-                depth = True
-            if depth:
+            if use_depth:
                 bgl.glEnable(bgl.GL_DEPTH_TEST)
-                bgl.glDepthMask(0)
             else:
                 bgl.glDisable(bgl.GL_DEPTH_TEST)
             bgl.glColor4f(*prefs.loop_select_color)
@@ -1066,7 +1131,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             vert_coords, edge_coords, face_coords, median_coords = targets
 
             if face_coords:
-                if depth:
+                if use_depth:
                     ED_view3d_polygon_offset(rv3d, 1)
                 setpolygontone(True, prefs.loop_select_face_stipple)
                 bgl.glBegin(bgl.GL_TRIANGLES)
@@ -1084,11 +1149,11 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                             bgl.glVertex3f(*v)
                 bgl.glEnd()
                 setpolygontone(False)
-                if depth:
+                if use_depth:
                     ED_view3d_polygon_offset(rv3d, 0)
 
             elif edge_coords:
-                if depth:
+                if use_depth:
                     ED_view3d_polygon_offset(rv3d, 1)
                 bgl.glLineWidth(prefs.loop_select_line_width)
                 setlinestyle(prefs.loop_select_line_stipple)
@@ -1099,11 +1164,8 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 bgl.glEnd()
                 setlinestyle(0)
                 bgl.glLineWidth(1)
-                if depth:
+                if use_depth:
                     ED_view3d_polygon_offset(rv3d, 0)
-
-            if depth:
-                bgl.glDepthMask(1)
 
             glsettings.restore_3d()
 
