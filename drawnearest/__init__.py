@@ -1065,9 +1065,11 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 x = int(v[0]) + region.x
                 y = int(v[1]) + region.y
                 depth3x3 = get_depth(x, y, 1)
-                if not (0.0 <= v[2] <= 1.0):
+                if not (0.0 < v[2] < 1.0):
                     return False
                 for f in depth3x3:
+                    if not (0.0 < f < 1.0):  # オブジェクト中心マークが0.0
+                        return True
                     if v[2] <= f:
                         return True
                 return False
