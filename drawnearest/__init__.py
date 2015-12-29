@@ -158,7 +158,6 @@ class DrawNearestPreferences(
 
     redraw_all = bpy.props.BoolProperty(
         name='Redraw All 3D View',
-        description='If enable, redraw all 3D view areas of current screen',
         default=True,
     )
     use_ctypes = bpy.props.BoolProperty(
