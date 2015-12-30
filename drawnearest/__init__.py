@@ -1735,6 +1735,11 @@ def scene_update_pre(scene):
         pass
 
 
+@bpy.app.handlers.persistent
+def load_pre(dummy):
+    VIEW3D_OT_draw_nearest_element.unregister()
+
+
 classes = [
     DrawNearestPreferences,
     VIEW3D_PG_DrawNearest,
@@ -1748,10 +1753,12 @@ def register():
     space_prop.register()
     bpy.types.VIEW3D_PT_view3d_meshdisplay.append(menu_func)
     bpy.app.handlers.scene_update_pre.append(scene_update_pre)
+    bpy.app.handlers.load_pre.append(load_pre)
 
 
 def unregister():
     bpy.app.handlers.scene_update_pre.remove(scene_update_pre)
+    bpy.app.handlers.load_pre.remove(load_pre)
     bpy.types.VIEW3D_PT_view3d_meshdisplay.remove(menu_func)
     space_prop.unregister()
     for cls in classes[::-1]:
