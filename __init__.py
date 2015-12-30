@@ -92,7 +92,10 @@ def _get_pref_class(mod):
 
 def get_addon_preferences(name=''):
     """登録と取得"""
-    prefs = bpy.context.user_preferences.addons[__name__].preferences
+    addons = bpy.context.user_preferences.addons
+    if __name__ not in addons:  # wm.read_factory_settings()
+        return None
+    prefs = addons[__name__].preferences
     if name:
         if not hasattr(prefs, name):
             for mod in sub_modules:
@@ -125,10 +128,11 @@ def unregister_submodule(mod):
         name = mod.__name__.split('.')[-1]
         if hasattr(CToolsPreferences, name):
             delattr(CToolsPreferences, name)
-            bpy.utils.unregister_class(CToolsPreferences)
-            bpy.utils.register_class(CToolsPreferences)
-            if name in prefs:
-                del prefs[name]
+            if prefs:
+                bpy.utils.unregister_class(CToolsPreferences)
+                bpy.utils.register_class(CToolsPreferences)
+                if name in prefs:
+                    del prefs[name]
 
 
 def test_platform():
@@ -285,11 +289,13 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
 
         req = urllib.request.urlopen(self.url)
 
+        # TODO: 例外処理
         with tempfile.TemporaryDirectory() as tmpdir_name:
             with tempfile.NamedTemporaryFile(
                     'wb', suffix='.zip', dir=tmpdir_name,
                     delete=False) as tmpfile:
                 tmpfile.write(req.read())
+                req.close()
             zf = zipfile.ZipFile(tmpfile.name, 'r')
             dirname = ''
             for name in zf.namelist():
@@ -345,9 +351,8 @@ def register():
 
 
 def unregister():
-    prefs = get_addon_preferences()
     for mod in sub_modules:
-        if getattr(prefs, 'use_' + mod.__name__.split('.')[-1]):
+        if mod.__addon_enabled__:
             unregister_submodule(mod)
 
     for cls in classes[::-1]:

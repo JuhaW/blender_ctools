@@ -2830,8 +2830,6 @@ def unregister():
     logger.debug('Unregister RegionRuler')
     draw_handler_remove()
 
-    prefs = RegionRulerPreferences.get_prefs()
-
     space_prop.unregister()
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
