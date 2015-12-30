@@ -737,6 +737,116 @@ def unified_findnearest(context, bm, mval):
     return r
 
 
+def mouse_mesh_loop(context, bm, mval, ring):
+    # TODO: 作業中
+    """Mesh編集モードに於いて、次の右クリックで選択される要素を返す。
+    Linux限定。
+    NOTE: bmeshは外部から持ってこないと関数を抜ける際に開放されて
+          返り値のBMVert等がdead扱いになってしまう。
+    :type context: bpy.types.Context
+    :param mval: mouse region coordinates. [x, y]
+    :type mval: list[int] | tuple[int]
+    :rtype: (bool,
+             (bmesh.types.BMVert, bmesh.types.BMEdge, bmesh.types.BMFace))
+    """
+
+    if not test_platform():
+        raise OSError('Linux only')
+
+    if context.mode != 'EDIT_MESH':
+        return None, None
+
+    # Load functions ------------------------------------------------
+    blend_cdll = ctypes.CDLL('')
+
+    view3d_operator_needs_opengl = blend_cdll.view3d_operator_needs_opengl
+
+    em_setup_viewcontext = blend_cdll.em_setup_viewcontext
+    ED_view3d_backbuf_validate = blend_cdll.ED_view3d_backbuf_validate
+    ED_view3d_select_dist_px = blend_cdll.ED_view3d_select_dist_px
+    ED_view3d_select_dist_px.restype = c_float
+
+    EDBM_edge_find_nearest_ex = blend_cdll.EDBM_edge_find_nearest_ex
+    EDBM_edge_find_nearest_ex.restype = POINTER(BMEdge)
+
+    BPy_BMEdge_CreatePyObject = blend_cdll.BPy_BMEdge_CreatePyObject
+    BPy_BMEdge_CreatePyObject.restype = py_object
+
+    # edbm_select_loop_invoke() -------------------------------------
+    C = cast(c_void_p(context.as_pointer()), POINTER(Context))
+    view3d_operator_needs_opengl(C)
+
+    # mouse_mesh_loop() ---------------------------------------------
+    vc_obj = ViewContext()
+    vc = POINTER(ViewContext)(vc_obj)  # same as pointer(vc_obj)
+    dist = c_float(ED_view3d_select_dist_px() * 0.6666)
+    em_setup_viewcontext(C, vc)
+    vc_obj.mval[0] = mval[0]
+    vc_obj.mval[1] = mval[1]
+
+    ED_view3d_backbuf_validate(vc)
+
+    eed = EDBM_edge_find_nearest_ex(vc, byref(dist), None, True, True, None)
+    if not eed:
+        return None, None
+
+    bm_p = c_void_p(vc_obj.em.contents.bm)
+    edge = BPy_BMEdge_CreatePyObject(bm_p, eed) if eed else None
+    """:type: bmesh.types.BMEdge"""
+
+    elements = []
+
+    if bm.select_mode & {'FACE'}:
+        if len(edge.link_loops) == 2:  # ここでfaceのhideは考慮しない
+            loop1, loop2 = edge.link_loops
+            loop = loop1
+            reverse = False
+            while True:
+                face = loop.face
+                if not face.hide and len(face.verts) == 4:
+                    if reverse:
+                        elements.insert(0, face)
+                    else:
+                        elements.append(loop.face)
+                    loop = loop.link_loop_next.link_loop_next
+                    if loop == loop2 or loop == loop1:
+                        break
+                if (face.hide or len(face.verts) != 4 or
+                        len(loop.link_loops) != 2):
+                    if not reverse:
+                        loop = loop2
+                        reverse = True
+                    else:
+                        break
+                else:
+                    loop = loop.link_loop_radial_next
+    else:
+        # 元々面が存在しない辺を選択肢ならloopで選択されるのは
+        # 同じくリンクした面を持たない辺. 三叉以上可。
+        # ringならその辺だけ選択
+        if ring:
+            # TODO:
+            if edge.is_manifold:  # len(edge.link_loops) == 2
+                # 処理。他はパス
+                pass
+        else:
+            queue = set()
+            if edge.is_wire:  # wire
+
+                pass
+            elif edge.is_boundary:  # boundary
+                if 'select edge boundary' and 'toggle off':
+                    # 選択中の辺
+                    'select all boundary'
+                else:
+                    pass
+            elif edge.is_manifold:  # 2
+                pass
+            pass
+
+    return edge, elements
+
+
 ###############################################################################
 # ctypes for windows
 ###############################################################################
@@ -1208,25 +1318,111 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             selected_faces = get_selected_indices(bm, 'FACE')
 
         else:
-            selected_faces = {elem for elem in bm.faces if elem.select}
-            selected_edges = {elem for elem in bm.edges if elem.select}
             selected_verts = {elem for elem in bm.verts if elem.select}
+            selected_edges = {elem for elem in bm.edges if elem.select}
+            selected_faces = {elem for elem in bm.faces if elem.select}
+
         return selected_verts, selected_edges, selected_faces
 
+    def find_loop_select(self, bm, edge):
+        # TODO: 作業中
+        traced = set()
+        queue = set()
+        result_edges = []
+        if edge.is_wire:  # wire
+            queue.add(edge.verts[0])
+            while queue:
+                vert = queue.pop()
+                for e in vert.link_edges:
+                    if not e.hide and e.is_wire:
+                        result_edges.append(e)
+                        v = edge.other_vert(vert)
+                        if v not in traced:
+                            queue.add(v)
+                traced.add(vert)
+
+        elif edge.is_boundary:  # boundary
+            if 'select edge boundary' and 'toggle off':
+                # 選択中の辺
+                'select all boundary'
+            else:
+                pass
+        elif edge.is_manifold:  # 2
+            start_edge = edge
+            f1, f2 = edge.link_faces
+            if 3 <= len(f1.verts) <= 4 and 3 <= len(f2.verts) <= 4:
+                queue.add((edge, edge.verts[0]))
+                queue.add((edge, edge.verts[1]))
+                while queue:
+                    edge, vert = queue.pop()
+                    result_edges.append(edge)
+                    if vert.link_faces == 4:
+                        faces = list(vert.link_faces)
+                        faces.remove(edge.link_faces[0])
+                        faces.remove(edge.link_faces[1])
+                        face_edges = set(faces[0].edges) & set(faces[1].edges)
+                        if len(face_edges) == 1:
+                            e = face_edges[0]
+                            queue.add((e, e.other_vert[vert]))
+                        else:
+                            for face_edge in face_edges:
+                                if vert in face_edge.verts:
+                                    break
+                            v = face_edge.other_vert(vert)
+                            for i in range(len(face_edges)):
+                                if len(face_edge.link_faces) == 2:
+                                    result_edges.append(face_edge)
+                                    if i == len(face_edges) - 1:
+                                        queue.add((v, face_edge))
+                                    else:
+                                        if len(v.link_faces) == 2:
+                                            for e in v.link_edges:
+                                                if e != face_edge and not e.is_wine:
+                                                    face_edge = e
+                                                    v = face_edge.other_vert(v)
+                                                    continue
+                                break
+
+                result_edges = list(set(result_edges))
+            else:
+                result_edges = [edge]
+        else:
+            result_edges = [edge]
+
+        return result_edges
+
     def find_preselection_loop_edgering(self, context, context_dict,
-                                        mco_region, ring, use_ctypes):
+                                        mco_region, ring, toggle, use_ctypes):
+        # TODO: 一旦全て非選択にしてから求めるので実際の選択とは差異が生じる
+        """face選択が無効でloopセレクトの場合のみ。
+        選択中の要素をリスト化。全非選択、ループセレクト、
+        ループセレクト前後で選択要素を比較、選択後の要素が外周で、選択前で既に全てselect
+        状態でトグルがFalseなら、その両端から外周を選択していく
+        """
+
         mesh = context.active_object.data
         bm = bmesh.from_edit_mesh(mesh)
-        bpy.ops.mesh.select_all(context_dict, True, action='DESELECT')
+
+        check_boudary = not ring and not toggle
+        if check_boudary:
+            verts_pre, edges_pre, faces_pre = self.get_selected(bm, use_ctypes)
+            if use_ctypes:
+                # verts_pre = [bm.verts[i] for i in verts_pre]
+                edges_pre = [bm.edges[i] for i in edges_pre]
+                # faces_pre = [bm.faces[i] for i in faces_pre]
+
+        r1 = bpy.ops.mesh.select_all(context_dict, True, action='DESELECT')
+        if r1 == {'CANCELLED'}:  # まぁ無いだろうけd
+            return [], [], [], []
         if ring:
-            r = bpy.ops.mesh.edgering_select(
+            r2 = bpy.ops.mesh.edgering_select(
                     context_dict, 'INVOKE_DEFAULT', True, extend=False,
                     deselect=False, toggle=False, ring=True)
         else:
-            r = bpy.ops.mesh.loop_select(
+            r2 = bpy.ops.mesh.loop_select(
                     context_dict, 'INVOKE_DEFAULT', True, extend=False,
                     deselect=False, toggle=False, ring=False)
-        if r == {'CANCELLED'}:
+        if r2 == {'CANCELLED'}:
             bpy.ops.ed.undo()
             return [], [], [], []
 
@@ -1236,15 +1432,46 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             edges = [bm.edges[i] for i in edges]
             faces = [bm.faces[i] for i in faces]
 
+        if check_boudary:
+            select_boundary = False
+            if not faces:
+                if all([e.is_boundary for e in edges]):
+                    for e in edges:
+                        if e not in edges_pre:
+                            break
+                    else:
+                        select_boundary = True
+            if select_boundary:
+                edges_ext = []  # 他の境界線
+                verts_ext = []
+                queue = set(verts)
+                while queue:
+                    vert = queue.pop()
+                    for edge in vert.link_edges:
+                        if edge.hide:
+                            continue
+                        if edge.is_boundary:
+                            if edge not in edges and edge not in edges_ext:
+                                edges_ext.append(edge)
+                                verts_ext.append(vert)
+                                queue.add(edge.other_vert(vert))
+                # 境界が全部選択済みでない場合に限り追加する
+                for e in edges_ext:
+                    if e not in edges_pre:
+                        edges.extend(edges_ext)
+                        verts.extend(verts_ext)
+                        break
+
         vert_coords = [v.co.copy() for v in verts]
         edge_coords = [[v.co.copy() for v in e.verts] for e in edges]
         # if bm.select_mode & {'FACE'}:
         face_coords = [[v.co.copy() for v in f.verts] for f in faces]
         medians = [f.calc_center_median() for f in faces]
 
-        bpy.ops.ed.undo()  # mesh.select_all
-        if r == {'FINISHED'}:  # loop_select / edgering_select
-            bpy.ops.ed.undo()
+        # mesh.select_all
+        bpy.ops.ed.undo()
+        # loop_select / edgering_select
+        bpy.ops.ed.undo()
 
         return vert_coords, edge_coords, face_coords, medians
 
@@ -1456,16 +1683,29 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 oskey = False
 
         mode = ''
+        ring = False
+        toggle = False
         for kmi in self.keymap_items['loop_select']:
             if (kmi.shift == shift and kmi.ctrl == ctrl and
                     kmi.alt == alt and kmi.oskey == oskey):
                 mode = 'loop_select'
+                toggle = kmi.properties.toggle
+                break
         for kmi in self.keymap_items['edgering_select']:
             if (kmi.shift == shift and kmi.ctrl == ctrl and
                     kmi.alt == alt and kmi.oskey == oskey):
                 mode = 'edgering_select'
+                toggle = kmi.properties.toggle
+                ring = True
         if not mode:
             mode = 'select'
+
+        # オペレータ実行時にScene.update()が実行され
+        # lockcoordsのまで呼び出されてしまうから無効化しておく
+        scene_pre = list(bpy.app.handlers.scene_update_pre)
+        bpy.app.handlers.scene_update_pre.clear()
+        scene_post = list(bpy.app.handlers.scene_update_post)
+        bpy.app.handlers.scene_update_post.clear()
 
         if mode == 'select':
             if test_platform() and prefs.use_ctypes:
@@ -1494,13 +1734,16 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 data['target'] = [type(elem), coords, median]
 
         elif prefs.use_loop_select:
-            ring = mode == 'edgering_select'
             vert_coords, edge_coords, face_coords, medians = \
                 self.find_preselection_loop_edgering(
-                    context, context_dict, mco_region, ring, prefs.use_ctypes)
+                    context, context_dict, mco_region, ring, toggle,
+                        prefs.use_ctypes)
             if vert_coords:
                 data['targets'] = [vert_coords, edge_coords, face_coords,
                                    medians]
+
+        bpy.app.handlers.scene_update_pre[:] = scene_pre
+        bpy.app.handlers.scene_update_post[:] = scene_post
 
         # 存在しないrv3dを除去し、全ての値をTrueとする
         data['draw_flags'] = {}
@@ -1622,7 +1865,10 @@ def menu_func(self, context):
 
 
 def operator_call(op, *args, _scene_update=True, **kw):
-    """vawmより"""
+    """vawmより
+    operator_call(bpy.ops.view3d.draw_nearest_element,
+                  'INVOKE_DEFAULT', type='ENABLE', _scene_update=False)
+    """
     import bpy
     from _bpy import ops as ops_module
 
