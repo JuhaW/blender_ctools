@@ -507,11 +507,25 @@ class BMHeader(Structure):
     ]
 
 
+class BMElem(Structure):
+    _fields_ = [
+        ('head', BMHeader),
+    ]
+
+
 class BMVert(Structure):
     pass
 
 
 class BMEdge(Structure):
+    pass
+
+
+class BMFace(Structure):
+    pass
+
+
+class BMLoop(Structure):
     pass
 
 
@@ -535,11 +549,24 @@ BMEdge._fields_ = [
     ('oflags', c_void_p),  # BMFlagLayer
     ('v1', POINTER(BMVert)),
     ('v2', POINTER(BMVert)),
-    ('l', c_void_p),  # BMLoop
+    ('l', POINTER(BMLoop)),
     ('v1_disk_link', BMDiskLink),
     ('v2_disk_link', BMDiskLink),
 ]
 
+BMLoop._fields_ = [
+    ('head', BMHeader),
+
+    ('v', POINTER(BMVert)),
+    ('e', POINTER(BMEdge)),
+    ('f', POINTER(BMFace)),
+
+    ('radial_next', POINTER(BMLoop)),
+    ('radial_prev', POINTER(BMLoop)),
+
+    ('next', POINTER(BMLoop)),
+    ('prev', POINTER(BMLoop)),
+]
 
 class BMFace(Structure):
     _fields_ = [
@@ -580,6 +607,68 @@ class BMesh(Structure):
         ('etable_tot', c_int),
         ('ftable_tot', c_int),
     ]
+
+
+class ListBase(Structure):
+    """source/blender/makesdna/DNA_listBase.h: 59"""
+    _fields_ = [
+        ('first', c_void_p),
+        ('last', c_void_p)
+    ]
+
+
+class BMWalker(Structure):
+    _fields_ = [
+        ('begin_htype', c_char),      # only for validating input
+        ('begin', c_void_p),  # void  (*begin) (struct BMWalker *walker, void *start)
+        ('step', c_void_p),  # void *(*step)  (struct BMWalker *walker)
+        ('yield ', c_void_p),  # void *(*yield) (struct BMWalker *walker)
+        ('structsize', c_int),
+        ('order', c_int),  # enum BMWOrder
+        ('valid_mask', c_int),
+
+        # runtime
+        ('layer', c_int),
+
+        ('bm', POINTER(BMesh)),
+        ('worklist', c_void_p),  # BLI_mempool
+        ('states', ListBase),
+
+        # these masks are to be tested against elements BMO_elem_flag_test(),
+        # should never be accessed directly only through BMW_init() and bmw_mask_check_*() functions
+        ('mask_vert', c_short),
+        ('mask_edge', c_short),
+        ('mask_face', c_short),
+
+        ('flag', c_int),  # enum BMWFlag
+
+        ('visit_set', c_void_p),  # struct GSet *visit_set
+        ('visit_set_alt', c_void_p),  # struct GSet *visit_set_alt
+        ('depth', c_int),
+
+        ('dummy', c_int * 4)  # enumのサイズが不明な為
+    ]
+
+
+
+BMW_VERT_SHELL = 0
+BMW_LOOP_SHELL = 1
+BMW_LOOP_SHELL_WIRE = 2
+BMW_FACE_SHELL = 3
+BMW_EDGELOOP = 4
+BMW_FACELOOP = 5
+BMW_EDGERING = 6
+BMW_EDGEBOUNDARY = 7
+# BMW_RING
+BMW_LOOPDATA_ISLAND = 8
+BMW_ISLANDBOUND = 9
+BMW_ISLAND = 10
+BMW_CONNECTED_VERTEX = 11
+# end of array index enum vals
+
+# do not intitialze function pointers and struct size in BMW_init
+BMW_CUSTOM = 12
+BMW_MAXWALKERS = 13
 
 
 def context_py_dict_get(context):
@@ -735,6 +824,190 @@ def unified_findnearest(context, bm, mval):
     r = bool(eve or eed or efa), (v, e, f)
 
     return r
+
+
+def walker_select_count(em, walkercode, start, select, select_mix):
+    tot = [0, 0]
+
+    blend_cdll = ctypes.CDLL('')
+    BMW_init = blend_cdll.BMW_init
+    BMW_begin = blend_cdll.BMW_begin
+    BMW_begin.restype = POINTER(BMElem)
+    BMW_step = blend_cdll.BMW_step
+    BMW_step.restype = POINTER(BMElem)
+    BMW_end = blend_cdll.BMW_end
+    BM_ELEM_SELECT = 1 << 0
+
+    def BM_elem_flag_test_bool(ele, flag):
+        return ele.contents.head.hflag.value & flag != 0
+
+    BMW_MASK_NOP = 0
+    BMW_FLAG_TEST_HIDDEN = 1 << 0
+    BMW_NIL_LAY = 0
+
+    bm = c_void_p(em.contents.bm)
+    walker = BMWalker()
+    BMW_init(byref(walker), bm, walkercode,
+             BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
+             BMW_FLAG_TEST_HIDDEN,
+             BMW_NIL_LAY)
+    ele = BMW_begin(byref(walker), start)
+    while ele:
+        i = BM_elem_flag_test_bool(ele, BM_ELEM_SELECT) != select
+        tot[i] += 1
+        ele = BMW_step(byref(walker))
+    BMW_end(byref(walker))
+
+    return tot
+
+
+def walker_select(em, walkercode, start, select):
+    """mesh/editmesh_select.c: 1402
+    選択ではなく要素を返すように変更
+    """
+    r_elems = []
+
+    blend_cdll = ctypes.CDLL('')
+    BMW_init = blend_cdll.BMW_init
+    BMW_begin = blend_cdll.BMW_begin
+    BMW_begin.restype = POINTER(BMElem)
+    BMW_step = blend_cdll.BMW_step
+    BMW_step.restype = POINTER(BMElem)
+    BMW_end = blend_cdll.BMW_end
+
+    BMW_MASK_NOP = 0
+    BMW_FLAG_TEST_HIDDEN = 1 << 0
+    BMW_NIL_LAY = 0
+
+    bm = c_void_p(em.contents.bm)
+    walker = BMWalker()
+    BMW_init(byref(walker), bm, walkercode,
+             BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
+             BMW_FLAG_TEST_HIDDEN,
+             BMW_NIL_LAY)
+    ele = BMW_begin(byref(walker), start)
+    while ele:
+        r_elems.append(ele)
+        ele = BMW_step(byref(walker))
+    BMW_end(byref(walker))
+
+    return r_elems
+
+
+def mouse_mesh_loop_face(em, eed, select, select_clear):
+    return walker_select(em, BMW_FACELOOP, eed, select)
+
+
+def mouse_mesh_loop_edge_ring(em, eed, select, select_clear):
+    return walker_select(em, BMW_EDGERING, eed, select)
+
+
+def mouse_mesh_loop_edge(em, eed, select, select_clear, select_cycle):
+    def BM_edge_is_boundary(e):
+        l = e.contents.l
+        return (l and addressof(l.contents.radial_next.contents) ==
+                addressof(l.contents))
+
+    edge_boundary = False
+
+    if select_cycle and BM_edge_is_boundary(eed):
+        tot = walker_select_count(em, BMW_EDGELOOP, eed, select, False)
+        if tot[int(select)] == 0:
+            edge_boundary = True
+            tot = walker_select_count(em, BMW_EDGEBOUNDARY, eed, select, False)
+            if tot[int(select)] == 0:
+                edge_boundary = False
+
+    if edge_boundary:
+        return walker_select(em, BMW_EDGEBOUNDARY, eed, select)
+    else:
+        return walker_select(em, BMW_EDGELOOP, eed, select)
+
+
+def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
+    """Mesh編集モードに於いて、次の右クリックで選択される要素を返す。
+    Linux限定。
+    NOTE: bmeshは外部から持ってこないと関数を抜ける際に開放されて
+          返り値のBMVert等がdead扱いになってしまう。
+    :type context: bpy.types.Context
+    :param mval: mouse region coordinates. [x, y]
+    :type mval: list[int] | tuple[int]
+    :rtype: (bool,
+             (bmesh.types.BMVert, bmesh.types.BMEdge, bmesh.types.BMFace))
+    """
+
+    if not test_platform():
+        raise OSError('Linux only')
+
+    if context.mode != 'EDIT_MESH':
+        return None, None
+
+    # Load functions ------------------------------------------------
+    blend_cdll = ctypes.CDLL('')
+
+    view3d_operator_needs_opengl = blend_cdll.view3d_operator_needs_opengl
+
+    em_setup_viewcontext = blend_cdll.em_setup_viewcontext
+    ED_view3d_backbuf_validate = blend_cdll.ED_view3d_backbuf_validate
+    ED_view3d_select_dist_px = blend_cdll.ED_view3d_select_dist_px
+    ED_view3d_select_dist_px.restype = c_float
+
+    EDBM_edge_find_nearest_ex = blend_cdll.EDBM_edge_find_nearest_ex
+    EDBM_edge_find_nearest_ex.restype = POINTER(BMEdge)
+
+    BPy_BMEdge_CreatePyObject = blend_cdll.BPy_BMEdge_CreatePyObject
+    BPy_BMEdge_CreatePyObject.restype = py_object
+    BPy_BMElem_CreatePyObject = blend_cdll.BPy_BMElem_CreatePyObject
+    BPy_BMElem_CreatePyObject.restype = py_object
+
+    # edbm_select_loop_invoke() -------------------------------------
+    C = cast(c_void_p(context.as_pointer()), POINTER(Context))
+    view3d_operator_needs_opengl(C)
+
+    # mouse_mesh_loop() ---------------------------------------------
+    vc_obj = ViewContext()
+    vc = POINTER(ViewContext)(vc_obj)  # same as pointer(vc_obj)
+    dist = c_float(ED_view3d_select_dist_px() * 0.6666)
+    em_setup_viewcontext(C, vc)
+    vc_obj.mval[0] = mval[0]
+    vc_obj.mval[1] = mval[1]
+
+    ED_view3d_backbuf_validate(vc)
+
+    eed = EDBM_edge_find_nearest_ex(vc, byref(dist), None, True, True, None)
+    if not eed:
+        return None, None
+
+    bm_p = c_void_p(vc_obj.em.contents.bm)
+    edge = BPy_BMEdge_CreatePyObject(bm_p, eed)
+
+    select = True
+    select_clear = False
+    select_cycle = True
+    if not extend and not deselect and not toggle:
+        select_clear = True
+    if extend:
+        select = True
+    elif deselect:
+        select = False
+    elif select_clear or not edge.select:
+        select = True
+    elif toggle:
+        select = False
+        select_cycle = False
+
+    em = vc_obj.em
+    if bm.select_mode & {'FACE'}:
+        c_elems = mouse_mesh_loop_face(em, eed, select, select_clear)
+    else:
+        if ring:
+            c_elems = mouse_mesh_loop_edge_ring(em, eed, select, select_clear)
+        else:
+            c_elems = mouse_mesh_loop_edge(em, eed, select, select_clear,
+                                           select_cycle)
+
+    elems = [BPy_BMElem_CreatePyObject(bm_p, elem) for elem in c_elems]
+    return edge, elems
 
 
 ###############################################################################
@@ -1549,11 +1822,26 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 data['target'] = [type(elem), coords, median]
 
         elif prefs.use_loop_select:
-            vert_coords, edge_coords, face_coords, medians = \
-                self.find_loop_selection(
-                    context, context_dict, mco_region, ring, toggle,
-                    False)
-            if vert_coords:
+            if test_platform() and prefs.use_ctypes:
+                r = mouse_mesh_loop(context, bm, mco_region, False, False, toggle, ring)
+                vert_coords = []
+                edge_coords = []
+                face_coords = []
+                medians = []
+                if r[0]:
+                    elems = r[1]
+                    if elems:
+                        if isinstance(elems[0], bmesh.types.BMEdge):
+                            edge_coords = [[v.co.copy() for v in e.verts] for e in elems]
+                        elif isinstance(elems[0], bmesh.types.BMFace):
+                            face_coords = [[v.co.copy() for v in f.verts] for f in elems]
+                            medians = [f.calc_center_median() for f in elems]
+            else:
+                vert_coords, edge_coords, face_coords, medians = \
+                    self.find_loop_selection(
+                        context, context_dict, mco_region, ring, toggle,
+                        False)
+            if vert_coords or edge_coords or face_coords:
                 data['targets'] = [vert_coords, edge_coords, face_coords,
                                    medians]
 
@@ -1574,23 +1862,23 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         if data['target'] or data['targets']:
             # ctypesを使わない、又はtargetsを探す場合は
             # オペレータを使用しているのでどの道再描画される
-            if prefs.use_ctypes and data['target']:
-                redraw = False
+            if prefs.use_ctypes:
+                redraw = True
                 if data['target']:
                     if data['target'] != data['target_prev']:
                         redraw = True
-                # else:
-                #     if not data['targets_prev']:
-                #         redraw = True
-                #     else:
-                #         vert_coords_prev = data['targets_prev'][0]
-                #         if len(vert_coords) != len(vert_coords_prev):
-                #             redraw = True
-                #         else:
-                #             for v1, v2 in zip(vert_coords, vert_coords_prev):
-                #                 if v1 != v2:
-                #                     redraw = True
-                #                     break
+                else:
+                    if not data['targets_prev']:
+                        redraw = True
+                    else:
+                        vert_coords_prev = data['targets_prev'][0]
+                        if len(vert_coords) != len(vert_coords_prev):
+                            redraw = True
+                        else:
+                            for v1, v2 in zip(vert_coords, vert_coords_prev):
+                                if v1 != v2:
+                                    redraw = True
+                                    break
                 if redraw:
                     if prefs.redraw_all:
                         redraw_areas(context)
