@@ -2162,7 +2162,7 @@ def draw_callback(context):
     data.updated_space(context, glsettings)
 
     if context.area.type == 'IMAGE_EDITOR':
-        glsettings.prepare_2d()
+        glsettings.setup_region_pixel_space()
 
     bgl.glColorMask(1, 1, 1, 1)
     bgl.glEnable(bgl.GL_BLEND)
@@ -2209,7 +2209,7 @@ def draw_callback(context):
         draw_region_rulers(context)
 
     if context.area.type == 'IMAGE_EDITOR':
-        glsettings.restore_2d()
+        glsettings.restore_setup()
     glsettings.pop()
     glsettings.font_size()
 

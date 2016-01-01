@@ -286,3 +286,35 @@ class SpaceProperty:
                     del screen[wm_prop_name]
 
         self.registered.clear()
+
+
+def operator_call(op, *args, _scene_update=True, **kw):
+    """vawmより
+    operator_call(bpy.ops.view3d.draw_nearest_element,
+                  'INVOKE_DEFAULT', type='ENABLE', _scene_update=False)
+    """
+    import bpy
+    from _bpy import ops as ops_module
+
+    BPyOpsSubModOp = op.__class__
+    op_call = ops_module.call
+    context = bpy.context
+
+    # Get the operator from blender
+    wm = context.window_manager
+
+    # run to account for any rna values the user changes.
+    if _scene_update:
+        BPyOpsSubModOp._scene_update(context)
+
+    if args:
+        C_dict, C_exec, C_undo = BPyOpsSubModOp._parse_args(args)
+        ret = op_call(op.idname_py(), C_dict, kw, C_exec, C_undo)
+    else:
+        ret = op_call(op.idname_py(), None, kw)
+
+    if 'FINISHED' in ret and context.window_manager == wm:
+        if _scene_update:
+            BPyOpsSubModOp._scene_update(context)
+
+    return ret
