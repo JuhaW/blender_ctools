@@ -1338,7 +1338,7 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
                 context_dict, 'INVOKE_DEFAULT', False,
                 extend=False, deselect=False, toggle=False, ring=False)
     if r == {'CANCELLED'}:
-        return [], [], [], []
+        return None, [], []
 
     verts, edges, faces = get_selected(bm)
 
