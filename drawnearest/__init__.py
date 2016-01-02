@@ -1706,6 +1706,8 @@ def draw_callback(cls, context):
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         if mask == 'STENCIL':
             bgl.glEnable(bgl.GL_STENCIL_TEST)
+            bgl.glClearStencil(0)
+            bgl.glClear(bgl.GL_STENCIL_BUFFER_BIT)
         else:
             bgl.glDisable(bgl.GL_STENCIL_TEST)
 
@@ -1719,8 +1721,6 @@ def draw_callback(cls, context):
                 else:
                     cm = glsettings.region_pixel_space().enter()
                 if mask == 'STENCIL':
-                    bgl.glClearStencil(0)
-                    bgl.glClear(bgl.GL_STENCIL_BUFFER_BIT)
                     bgl.glStencilMask(0xff)
                     bgl.glStencilFunc(bgl.GL_GREATER, 0b1, 0xff)
                     bgl.glStencilOp(bgl.GL_KEEP, bgl.GL_REPLACE,
@@ -1809,7 +1809,7 @@ def draw_callback(cls, context):
                 else:
                     mode = bgl.GL_LINE_LOOP
                 if use_depth:
-                    ED_view3d_polygon_offset(rv3d, 1)
+                    ED_view3d_polygon_offset(rv3d, 2)
                     bgl.glBegin(mode)
                     for vec in coords:
                         bgl.glVertex3f(*vec)
