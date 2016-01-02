@@ -125,7 +125,7 @@ class DrawNearestPreferences(
         name='Vertex Line Width',
         default=2,
         min=1,
-        max=10,
+        max=5,
     )
     edge_line_width = bpy.props.IntProperty(
         name='Edge Line Width',
@@ -521,10 +521,11 @@ class GLSettings:
         return data
 
     def setup_region_pixel_space(self):
-        """glVertex3f等でz値を100.0で描画すると格納されるZ値は最も手前側の
-        0.0になり、z値を-100.0で描画すると最も遠い1.0となる
-
-        :return:
+        """NOTE: Z値の範囲: near 〜 far
+        perspective_matrix * vec4d / w: -1.0 〜 +1.0
+        gluProject: 0.0 〜 +1.0
+        POST_PIXEL: +100 〜 -100
+        Z-Buffer: 0.0 〜 +1.0
         :rtype: dict
         """
         modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
@@ -1774,6 +1775,7 @@ def draw_callback(cls, context):
         if target_type in {bmesh.types.BMEdge, bmesh.types.BMFace}:
             if draw_edge:
                 bgl.glLineWidth(prefs.edge_line_width)
+                bgl.glEnable(bgl.GL_LINE_SMOOTH)
                 setlinestyle(prefs.edge_line_stipple)
                 if target_type == bmesh.types.BMEdge:
                     mode = bgl.GL_LINES
@@ -1793,15 +1795,16 @@ def draw_callback(cls, context):
                             v = project(region, rv3d, vec)
                             bgl.glVertex3f(v[0], v[1], OVERLAY_DRAW_Z)
                         bgl.glEnd()
-
+                bgl.glDisable(bgl.GL_LINE_SMOOTH)
                 bgl.glLineWidth(1)
                 setlinestyle(0)
 
         # 頂点描画。頂点の中心が隠れていると描画しない
         if draw_vert:
-            vert_size = prefs.vertex_size / 2
-            vnum = 16
             bgl.glLineWidth(prefs.vertex_line_width)
+            bgl.glEnable(bgl.GL_LINE_SMOOTH)
+            vert_size = prefs.vertex_size / 2
+            vnum = 12
             if use_depth:
                 pmat = offs_pmat
             else:
@@ -1823,6 +1826,7 @@ def draw_callback(cls, context):
                         # bgl.glColor3f(0, 0, 0)
                         # draw_circle(v[0], v[1], z, vert_size, vnum,
                         #             poly=False)
+            bgl.glDisable(bgl.GL_LINE_SMOOTH)
             bgl.glLineWidth(1)
 
     else:
@@ -2034,19 +2038,20 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             elif event.value == 'RELEASE':
                 oskey = False
 
-        kc = bpy.context.window_manager.keyconfigs.user
-        km = kc.keymaps['Mesh']
-        for kmi in km.keymap_items:
-            if not kmi.active:
-                continue
-            if kmi.type == 'SELECTMOUSE':
+        if shift or ctrl or alt or oskey:
+            kc = bpy.context.window_manager.keyconfigs.user
+            km = kc.keymaps['Mesh']
+            for kmi in km.keymap_items:
+                if not kmi.active:
+                    continue
                 if kmi.idname in {'mesh.loop_select', 'mesh.edgering_select'}:
-                    if (kmi.shift == shift and kmi.ctrl == ctrl and
-                            kmi.alt == alt and kmi.oskey == oskey):
-                        mode = 'loop'
-                        ring = kmi.properties.ring
-                        toggle = kmi.properties.toggle
-                        break
+                    if kmi.type == 'SELECTMOUSE':
+                        if (kmi.shift == shift and kmi.ctrl == ctrl and
+                                kmi.alt == alt and kmi.oskey == oskey):
+                            mode = 'loop'
+                            ring = kmi.properties.ring
+                            toggle = kmi.properties.toggle
+                            break
 
         # オペレータ実行時にScene.update()が実行され
         # lockcoordsのまで呼び出されてしまうから無効化しておく
