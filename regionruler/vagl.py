@@ -18,7 +18,8 @@
 
 
 import math
-from contextlib import contextmanager
+import contextlib
+from functools import wraps
 # from itertools import chain
 
 import bpy
@@ -37,6 +38,7 @@ persmat = winmat * viewmat
 
 
 GLA_PIXEL_OFS = 0.375
+
 
 class Buffer:
     def __new__(self, type, dimensions=0, template=None):
@@ -110,6 +112,29 @@ def glSwitch(attr, value):
         bgl.glDisable(attr)
 
 
+class GCM(contextlib._GeneratorContextManager):
+    @classmethod
+    def contextmanager(cls, func):
+        @wraps(func)
+        def _func(*args, **kwargs):
+            return cls(func, args, kwargs)
+        return _func
+
+    def enter(self, result=False):
+        """
+        :type result: bool
+        :rtype: GCM | (GCM, T)
+        """
+        r = self.__enter__()
+        if result:
+            return self, r
+        else:
+            return self
+
+    def exit(self):
+        self.__exit__(None, None, None)
+
+
 class GLSettings:
     def __init__(self, context, view_matrix=None, perspective_matrix=None):
         rv3d = context.region_data
@@ -138,7 +163,6 @@ class GLSettings:
 
         self._modelview_stack = []  # used in pop(), push()
         self._projection_stack = []  # used in pop(), push()
-        self._setup_stack = []
 
         region = context.region
         self.region_size = region.width, region.height
@@ -251,12 +275,14 @@ class GLSettings:
         bgl.glPopAttrib()
 
     @classmethod
-    @contextmanager
-    def gl_push(cls, mask=bgl.GL_ALL_ATTRIB_BITS, matrix=True):
+    @GCM.contextmanager
+    def push_attrib(cls, mask=bgl.GL_ALL_ATTRIB_BITS, matrix=True):
         """with文で使用する。
-        with GLSettings.gl_push():
+        with GLSettings.push_attrib():
             ...
+        :rtype: GCM
         """
+
         bgl.glPushAttrib(mask)
         modelview = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
         projection = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
@@ -265,9 +291,10 @@ class GLSettings:
             cls._load_matrix(modelview, projection)
         bgl.glPopAttrib()
 
-    def setup_region_view3d_space(self):
-        """
-        :rtype: dict
+    @GCM.contextmanager
+    def region_view3d_space(self):
+        """with文、又はデコレータとして使用
+        :rtype: GCM
         """
         modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
         projection_mat = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
@@ -275,18 +302,23 @@ class GLSettings:
         win_mat = Buffer('double', (4, 4), self.window_matrix.transposed())
         self._load_matrix(view_mat, win_mat)
 
-        data = {'GL_MODELVIEW_MATRIX': modelview_mat,
-                'GL_PROJECTION_MATRIX': projection_mat}
-        self._setup_stack.append(data)
-        return data
+        try:
+            yield
+        finally:
+            self._load_matrix(modelview_mat, projection_mat)
 
-    def setup_region_pixel_space(self):
-        """glVertex3f等でz値を100.0で描画すると格納されるZ値は最も手前側の
-        0.0になり、z値を-100.0で描画すると最も遠い1.0となる
+    @GCM.contextmanager
+    def region_pixel_space(self):
+        """with文、又はデコレータとして使用
 
-        :return:
-        :rtype: dict
+        NOTE: Z値の範囲: near 〜 far
+        perspective_matrix * vec4d / w: -1.0 〜 +1.0
+        gluProject: 0.0 〜 +1.0
+        POST_PIXEL: +100 〜 -100
+        Z-Buffer: 0.0 〜 +1.0
+        :rtype: GCM
         """
+
         modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
         projection_mat = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
         matrix_mode = Buffer('int', 1, bgl.GL_MATRIX_MODE)
@@ -303,15 +335,17 @@ class GLSettings:
 
         bgl.glMatrixMode(matrix_mode[0])
 
-        data = {'GL_MODELVIEW_MATRIX': modelview_mat,
-                'GL_PROJECTION_MATRIX': projection_mat}
-        self._setup_stack.append(data)
-        return data
+        try:
+            yield
+        finally:
+            self._load_matrix(modelview_mat, projection_mat)
 
-    def setup_window_pixel_space(self):
+    @GCM.contextmanager
+    def window_pixel_space(self):
+        """with文、又はデコレータとして使用
+        :rtype: GCM
         """
-        :rtype: dict
-        """
+
         win_width, win_height = self.window_size
 
         modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
@@ -328,48 +362,11 @@ class GLSettings:
         bgl.glLoadIdentity()
         bgl.glMatrixMode(matrix_mode[0])
 
-        data = {'GL_MODELVIEW_MATRIX': modelview_mat,
-                'GL_PROJECTION_MATRIX': projection_mat,
-                'GL_VIEWPORT': viewport}
-        self._setup_stack.append(data)
-        return data
-
-    def restore_setup(self):
-        """setup_***での変更を戻す。
-        setup_***を呼んだ回数分だけ実行しないといけない。
-        """
-        data = self._setup_stack.pop()
-        if 'GL_VIEWPORT' in data:
-            bgl.glViewport(*data[bgl.GL_VIEWPORT])
-        self._load_matrix(data['GL_MODELVIEW_MATRIX'],
-                          data['GL_PROJECTION_MATRIX'])
-
-    @contextmanager
-    def region_view3d_space(self):
-        """with文、又はデコレータとして使用"""
-        data = self.setup_region_view3d_space()
         try:
-            yield data
+            yield
         finally:
-            self.restore_setup()
-
-    @contextmanager
-    def region_pixel_space(self):
-        """with文、又はデコレータとして使用"""
-        data = self.setup_region_pixel_space()
-        try:
-            yield data
-        finally:
-            self.restore_setup()
-
-    @contextmanager
-    def window_pixel_space(self):
-        """with文、又はデコレータとして使用"""
-        data = self.setup_window_pixel_space()
-        try:
-            yield data
-        finally:
-            self.restore_setup()
+            bgl.glViewport(*viewport)
+            self._load_matrix(modelview_mat, projection_mat)
 
         # NOTE:
         # PyOpenGLの場合

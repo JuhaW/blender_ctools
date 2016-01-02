@@ -39,7 +39,8 @@ import ctypes
 from ctypes import Structure, POINTER, addressof, byref, cast, c_bool, c_char,\
     c_int, c_int8, c_float, c_short, c_void_p, py_object, sizeof
 import numpy as np
-from contextlib import contextmanager
+import contextlib
+from functools import wraps
 
 import bpy
 import bmesh
@@ -200,10 +201,17 @@ class DrawNearestPreferences(
     redraw_all = bpy.props.BoolProperty(
         name='Redraw All 3D View',
     )
+    mask = bpy.props.EnumProperty(
+        name='Mask',
+        items=(('DEPTH', 'DEPTH_TEST', ''),
+               ('STENCIL', 'STENCIL_TEST', ''),
+               ('NONE', 'None', '')),
+        default='DEPTH',
+    )
     use_ctypes = bpy.props.BoolProperty(
         name='Use ctypes',
         description='Use ctypes python module (faster. linux only)',
-        default=test_platform(),
+        default=False,
     )
 
     def draw(self, context):
@@ -253,6 +261,7 @@ class DrawNearestPreferences(
 
         column = split.column()
         column.prop(self, 'redraw_all')
+        column.prop(self, 'mask')
         sub = column.column()
         sub.active = test_platform()
         sub.prop(self, 'use_ctypes')
@@ -350,6 +359,29 @@ def glSwitch(attr, value):
         bgl.glDisable(attr)
 
 
+class GCM(contextlib._GeneratorContextManager):
+    @classmethod
+    def contextmanager(cls, func):
+        @wraps(func)
+        def _func(*args, **kwargs):
+            return cls(func, args, kwargs)
+        return _func
+
+    def enter(self, result=False):
+        """
+        :type result: bool
+        :rtype: GCM | (GCM, T)
+        """
+        r = self.__enter__()
+        if result:
+            return self, r
+        else:
+            return self
+
+    def exit(self):
+        self.__exit__(None, None, None)
+
+
 class GLSettings:
     def __init__(self, context, view_matrix=None, perspective_matrix=None):
         rv3d = context.region_data
@@ -378,7 +410,6 @@ class GLSettings:
 
         self._modelview_stack = []  # used in pop(), push()
         self._projection_stack = []  # used in pop(), push()
-        self._setup_stack = []
 
         region = context.region
         self.region_size = region.width, region.height
@@ -491,12 +522,14 @@ class GLSettings:
         bgl.glPopAttrib()
 
     @classmethod
-    @contextmanager
-    def gl_push(cls, mask=bgl.GL_ALL_ATTRIB_BITS, matrix=True):
+    @GCM.contextmanager
+    def push_attrib(cls, mask=bgl.GL_ALL_ATTRIB_BITS, matrix=True):
         """with文で使用する。
-        with GLSettings.gl_push():
+        with GLSettings.push_attrib():
             ...
+        :rtype: GCM
         """
+
         bgl.glPushAttrib(mask)
         modelview = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
         projection = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
@@ -505,9 +538,10 @@ class GLSettings:
             cls._load_matrix(modelview, projection)
         bgl.glPopAttrib()
 
-    def setup_region_view3d_space(self):
-        """
-        :rtype: dict
+    @GCM.contextmanager
+    def region_view3d_space(self):
+        """with文、又はデコレータとして使用
+        :rtype: GCM
         """
         modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
         projection_mat = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
@@ -515,19 +549,23 @@ class GLSettings:
         win_mat = Buffer('double', (4, 4), self.window_matrix.transposed())
         self._load_matrix(view_mat, win_mat)
 
-        data = {'GL_MODELVIEW_MATRIX': modelview_mat,
-                'GL_PROJECTION_MATRIX': projection_mat}
-        self._setup_stack.append(data)
-        return data
+        try:
+            yield
+        finally:
+            self._load_matrix(modelview_mat, projection_mat)
 
-    def setup_region_pixel_space(self):
-        """NOTE: Z値の範囲: near 〜 far
+    @GCM.contextmanager
+    def region_pixel_space(self):
+        """with文、又はデコレータとして使用
+
+        NOTE: Z値の範囲: near 〜 far
         perspective_matrix * vec4d / w: -1.0 〜 +1.0
         gluProject: 0.0 〜 +1.0
         POST_PIXEL: +100 〜 -100
         Z-Buffer: 0.0 〜 +1.0
-        :rtype: dict
+        :rtype: GCM
         """
+
         modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
         projection_mat = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
         matrix_mode = Buffer('int', 1, bgl.GL_MATRIX_MODE)
@@ -544,15 +582,17 @@ class GLSettings:
 
         bgl.glMatrixMode(matrix_mode[0])
 
-        data = {'GL_MODELVIEW_MATRIX': modelview_mat,
-                'GL_PROJECTION_MATRIX': projection_mat}
-        self._setup_stack.append(data)
-        return data
+        try:
+            yield
+        finally:
+            self._load_matrix(modelview_mat, projection_mat)
 
-    def setup_window_pixel_space(self):
+    @GCM.contextmanager
+    def window_pixel_space(self):
+        """with文、又はデコレータとして使用
+        :rtype: GCM
         """
-        :rtype: dict
-        """
+
         win_width, win_height = self.window_size
 
         modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
@@ -569,48 +609,11 @@ class GLSettings:
         bgl.glLoadIdentity()
         bgl.glMatrixMode(matrix_mode[0])
 
-        data = {'GL_MODELVIEW_MATRIX': modelview_mat,
-                'GL_PROJECTION_MATRIX': projection_mat,
-                'GL_VIEWPORT': viewport}
-        self._setup_stack.append(data)
-        return data
-
-    def restore_setup(self):
-        """setup_***での変更を戻す。
-        setup_***を呼んだ回数分だけ実行しないといけない。
-        """
-        data = self._setup_stack.pop()
-        if 'GL_VIEWPORT' in data:
-            bgl.glViewport(*data[bgl.GL_VIEWPORT])
-        self._load_matrix(data['GL_MODELVIEW_MATRIX'],
-                          data['GL_PROJECTION_MATRIX'])
-
-    @contextmanager
-    def region_view3d_space(self):
-        """with文、又はデコレータとして使用"""
-        data = self.setup_region_view3d_space()
         try:
-            yield data
+            yield
         finally:
-            self.restore_setup()
-
-    @contextmanager
-    def region_pixel_space(self):
-        """with文、又はデコレータとして使用"""
-        data = self.setup_region_pixel_space()
-        try:
-            yield data
-        finally:
-            self.restore_setup()
-
-    @contextmanager
-    def window_pixel_space(self):
-        """with文、又はデコレータとして使用"""
-        data = self.setup_window_pixel_space()
-        try:
-            yield data
-        finally:
-            self.restore_setup()
+            bgl.glViewport(*viewport)
+            self._load_matrix(modelview_mat, projection_mat)
 
         # NOTE:
         # PyOpenGLの場合
@@ -1647,6 +1650,12 @@ def draw_callback(cls, context):
     else:
         use_depth = False
 
+    mask = prefs.mask
+    if mask == 'STENCIL':
+        buf = Buffer('int', 0, bgl.GL_STENCIL_BITS)
+        if buf == 0:
+            mask = 'NONE'
+
     if target:
         bgl.glColor4f(*prefs.select_color)
 
@@ -1694,18 +1703,33 @@ def draw_callback(cls, context):
                 draw_edge = 'EDGE' in prefs.draw_set_face
                 draw_face = 'FACE' in prefs.draw_set_face
 
+        bgl.glEnable(bgl.GL_DEPTH_TEST)
+        if mask == 'STENCIL':
+            bgl.glEnable(bgl.GL_STENCIL_TEST)
+        else:
+            bgl.glDisable(bgl.GL_STENCIL_TEST)
+
         # 頂点位置にマスクを描く
         # NOTE: 元の頂点は深度マスクを切って描かれている
         v_size = context.user_preferences.themes['Default'].view_3d.vertex_size
-        if mesh_select_mode[0]:
-            with glsettings.gl_push():
+        if mesh_select_mode[0] and mask != 'NONE':
+            with glsettings.push_attrib():
                 if use_depth:
                     ED_view3d_polygon_offset(rv3d, 1)
                 else:
-                    glsettings.setup_region_pixel_space()
-                bgl.glEnable(bgl.GL_DEPTH_TEST)
-                bgl.glDepthFunc(bgl.GL_ALWAYS)
-                bgl.glDepthMask(1)
+                    cm = glsettings.region_pixel_space().enter()
+                if mask == 'STENCIL':
+                    bgl.glClearStencil(0)
+                    bgl.glClear(bgl.GL_STENCIL_BUFFER_BIT)
+                    bgl.glStencilMask(0xff)
+                    bgl.glStencilFunc(bgl.GL_GREATER, 0b1, 0xff)
+                    bgl.glStencilOp(bgl.GL_KEEP, bgl.GL_REPLACE,
+                                    bgl.GL_REPLACE)
+                    bgl.glDepthMask(0)
+                else:
+                    bgl.glDepthFunc(bgl.GL_ALWAYS)
+                    bgl.glDepthMask(1)
+
                 bgl.glColorMask(0, 0, 0, 0)
                 bgl.glPointSize(v_size)
                 bgl.glBegin(bgl.GL_POINTS)
@@ -1720,10 +1744,13 @@ def draw_callback(cls, context):
                 if use_depth:
                     ED_view3d_polygon_offset(rv3d, 0)
                 else:
-                    glsettings.restore_setup()
+                    cm.exit()
 
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         bgl.glDepthMask(0)
+        bgl.glStencilMask(0)
+        bgl.glStencilFunc(bgl.GL_EQUAL, 0, 0xff)
+        bgl.glStencilOp(bgl.GL_KEEP, bgl.GL_KEEP, bgl.GL_KEEP)
 
         # 面描画
         if target_type == bmesh.types.BMFace and draw_face:
@@ -1801,6 +1828,7 @@ def draw_callback(cls, context):
 
         # 頂点描画。頂点の中心が隠れていると描画しない
         if draw_vert:
+            bgl.glDisable(bgl.GL_STENCIL_TEST)
             bgl.glLineWidth(prefs.vertex_line_width)
             bgl.glEnable(bgl.GL_LINE_SMOOTH)
             vert_size = prefs.vertex_size / 2
@@ -1837,7 +1865,7 @@ def draw_callback(cls, context):
             bgl.glDisable(bgl.GL_DEPTH_TEST)
         bgl.glColor4f(*prefs.loop_select_color)
 
-        glsettings.setup_region_view3d_space()
+        cm = glsettings.region_view3d_space().enter()
 
         active, edge_coords, face_coords = targets
 
@@ -1879,7 +1907,7 @@ def draw_callback(cls, context):
             if use_depth:
                 ED_view3d_polygon_offset(rv3d, 0)
 
-        glsettings.restore_setup()
+        cm.exit()
 
     glsettings.pop()
     glsettings.font_size()
