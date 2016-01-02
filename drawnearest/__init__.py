@@ -57,6 +57,9 @@ from .utils import AddonPreferences, SpaceProperty, operator_call
 OVERLAY_MASK_Z = 100.0 - 1e-5
 OVERLAY_DRAW_Z = OVERLAY_MASK_Z - 1e-5
 
+# solid表示で辺を描画する際にED_view3d_polygon_offsetへ渡す値
+POLYGON_OFFSET_EDGE = 1.05
+
 
 def test_platform():
     return (platform.platform().split('-')[0].lower()
@@ -1717,7 +1720,7 @@ def draw_callback(cls, context):
         if mesh_select_mode[0] and mask != 'NONE':
             with glsettings.push_attrib():
                 if use_depth:
-                    ED_view3d_polygon_offset(rv3d, 1)
+                    ED_view3d_polygon_offset(rv3d, 1.0)
                 else:
                     cm = glsettings.region_pixel_space().enter()
                 if mask == 'STENCIL':
@@ -1742,7 +1745,7 @@ def draw_callback(cls, context):
                             bgl.glVertex3f(v[0], v[1], OVERLAY_MASK_Z)
                 bgl.glEnd()
                 if use_depth:
-                    ED_view3d_polygon_offset(rv3d, 0)
+                    ED_view3d_polygon_offset(rv3d, 0.0)
                 else:
                     cm.exit()
 
@@ -1767,14 +1770,14 @@ def draw_callback(cls, context):
 
                 setpolygontone(True, dot_size)
                 if use_depth:
-                    ED_view3d_polygon_offset(rv3d, 1)
+                    ED_view3d_polygon_offset(rv3d, 1.0)
                     bgl.glBegin(bgl.GL_TRIANGLES)
                     for tri in tris:
                         for i in tri:
                             v = mat * coords_local[i]
                             bgl.glVertex3f(*v)
                     bgl.glEnd()
-                    ED_view3d_polygon_offset(rv3d, 0)
+                    ED_view3d_polygon_offset(rv3d, 0.0)
                 else:
                     with glsettings.region_pixel_space():
                         bgl.glBegin(bgl.GL_TRIANGLES)
@@ -1809,12 +1812,17 @@ def draw_callback(cls, context):
                 else:
                     mode = bgl.GL_LINE_LOOP
                 if use_depth:
-                    ED_view3d_polygon_offset(rv3d, 2)
+                    if solid_object:
+                        # 辺が1.0で描画されている為（たぶん）、
+                        # すこしずらなさいと重なってしまう
+                        ED_view3d_polygon_offset(rv3d, POLYGON_OFFSET_EDGE)
+                    else:
+                        ED_view3d_polygon_offset(rv3d, 1.0)
                     bgl.glBegin(mode)
                     for vec in coords:
                         bgl.glVertex3f(*vec)
                     bgl.glEnd()
-                    ED_view3d_polygon_offset(rv3d, 0)
+                    ED_view3d_polygon_offset(rv3d, 0.0)
                 else:
                     with glsettings.region_pixel_space():
                         bgl.glBegin(mode)
@@ -1871,7 +1879,7 @@ def draw_callback(cls, context):
 
         if face_coords:
             if use_depth:
-                ED_view3d_polygon_offset(rv3d, 1)
+                ED_view3d_polygon_offset(rv3d, 1.0)
             dot_size = 2 ** (prefs.loop_select_face_stipple - 1)
             setpolygontone(True, dot_size)
             bgl.glBegin(bgl.GL_TRIANGLES)
@@ -1890,11 +1898,11 @@ def draw_callback(cls, context):
             bgl.glEnd()
             setpolygontone(False)
             if use_depth:
-                ED_view3d_polygon_offset(rv3d, 0)
+                ED_view3d_polygon_offset(rv3d, 0.0)
 
         elif edge_coords:
             if use_depth:
-                ED_view3d_polygon_offset(rv3d, 1)
+                ED_view3d_polygon_offset(rv3d, 1.0)
             bgl.glLineWidth(prefs.loop_select_line_width)
             setlinestyle(prefs.loop_select_line_stipple)
             bgl.glBegin(bgl.GL_LINES)
@@ -1905,7 +1913,7 @@ def draw_callback(cls, context):
             setlinestyle(0)
             bgl.glLineWidth(1)
             if use_depth:
-                ED_view3d_polygon_offset(rv3d, 0)
+                ED_view3d_polygon_offset(rv3d, 0.0)
 
         cm.exit()
 
