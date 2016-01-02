@@ -2122,49 +2122,48 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 
         # 再描画
         if data['target'] or data['loop_targets']:
-            if use_ctypes:
-                updated_areas = set()
-                for sa in context.window.screen.areas:
-                    if sa.type != 'VIEW_3D':
-                        continue
-                    space_data = sa.spaces.active
-                    """:type: bpy.types.SpaceView3D"""
-                    prop = space_prop.get(space_data)
-                    if (not prop.enable or
-                            space_data.viewport_shade == 'RENDERED'):
-                        continue
-                    key = space_data.region_3d.as_pointer()
+            updated_areas = set()
+            for sa in context.window.screen.areas:
+                if sa.type != 'VIEW_3D':
+                    continue
+                space_data = sa.spaces.active
+                """:type: bpy.types.SpaceView3D"""
+                prop = space_prop.get(space_data)
+                if (not prop.enable or
+                        space_data.viewport_shade == 'RENDERED'):
+                    continue
+                key = space_data.region_3d.as_pointer()
+                count = data['callback_count'].get(key)
+                if count is not None:
+                    if count > 1:
+                        updated_areas.add(sa)
+                data['callback_count'][key] = 0
+                for rv3d_ in space_data.region_quadviews:
+                    key = rv3d_.as_pointer()
                     count = data['callback_count'].get(key)
                     if count is not None:
                         if count > 1:
                             updated_areas.add(sa)
                     data['callback_count'][key] = 0
-                    for rv3d_ in space_data.region_quadviews:
-                        key = rv3d_.as_pointer()
-                        count = data['callback_count'].get(key)
-                        if count is not None:
-                            if count > 1:
-                                updated_areas.add(sa)
-                        data['callback_count'][key] = 0
-                redraw = False
-                if updated_areas:
+            redraw = False
+            if updated_areas:
+                redraw = True
+            elif data['target'] != data['target_prev']:
+                redraw = True
+            elif not data['loop_targets_prev']:
+                redraw = True
+            else:
+                active_prev, edges_prev, faces_prev = \
+                    data['loop_targets_prev']
+                if (active_prev != repr(active) or
+                        len(edges_prev) != len(edge_coords) or
+                        len(faces_prev) != len(face_coords)):
                     redraw = True
-                elif data['target'] != data['target_prev']:
-                    redraw = True
-                elif not data['loop_targets_prev']:
-                    redraw = True
+            if redraw:
+                if prefs.redraw_all:
+                    redraw_areas(context)
                 else:
-                    active_prev, edges_prev, faces_prev = \
-                        data['loop_targets_prev']
-                    if (active_prev != repr(active) or
-                            len(edges_prev) != len(edge_coords) or
-                            len(faces_prev) != len(face_coords)):
-                        redraw = True
-                if redraw:
-                    if prefs.redraw_all:
-                        redraw_areas(context)
-                    else:
-                        area.tag_redraw()
+                    area.tag_redraw()
         else:
             if self.fond_area_prev:
                 self.fond_area_prev.tag_redraw()
