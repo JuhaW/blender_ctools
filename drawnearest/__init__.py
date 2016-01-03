@@ -1336,6 +1336,8 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
                 context_dict, 'INVOKE_DEFAULT', False,
                 extend=False, deselect=False, toggle=False, ring=True)
     else:
+        if toggle:
+            bpy.ops.mesh.select_all(context_dict, False, action='DESELECT')
         bpy.ops.mesh.select_mode(False, type='EDGE')
         r = bpy.ops.mesh.loop_select(
                 context_dict, 'INVOKE_DEFAULT', False,
@@ -1352,7 +1354,7 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
     face_coords = [[v.co.copy() for v in f.verts] for f in faces]
     active = bm.select_history.active
 
-    bpy.ops.mesh.select_all(context_dict, action='DESELECT')
+    bpy.ops.mesh.select_all(context_dict, False, action='DESELECT')
     context.tool_settings.mesh_select_mode = mode
     if mode == [False, False, True]:
         for f in faces_pre:
