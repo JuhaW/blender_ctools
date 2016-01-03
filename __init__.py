@@ -47,7 +47,7 @@ from . import updatetag
 bl_info = {
     'name': 'CTools',
     'author': 'chromoly',
-    'version': (1, 0),
+    'version': (1, 1),
     'blender': (2, 76, 0),
     'location': '',
     'description': 'Addon Collection',
