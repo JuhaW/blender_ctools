@@ -1343,40 +1343,42 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
                 context_dict, 'INVOKE_DEFAULT', False,
                 extend=False, deselect=False, toggle=False, ring=False)
     if r == {'CANCELLED'}:
-        return None, [], []
-
-    verts, edges, faces = get_selected(bm)
-
-    if not ring:
-        faces.clear()
-
-    edge_coords = [[v.co.copy() for v in e.verts] for e in edges]
-    face_coords = [[v.co.copy() for v in f.verts] for f in faces]
-    active = bm.select_history.active
-
-    bpy.ops.mesh.select_all(context_dict, False, action='DESELECT')
-    context.tool_settings.mesh_select_mode = mode
-    if mode == [False, False, True]:
-        for f in faces_pre:
-            f.select = True
-    elif not mode[0]:
-        for f in faces_pre:
-            f.select = True
-        for e in edges_pre:
-            e.select = True
+        active = None
+        edge_coords = []
+        face_coords = []
     else:
-        for f in faces_pre:
-            f.select = True
-        for e in edges_pre:
-            e.select = True
-        for v in verts_pre:
-            v.select = True
+        active = bm.select_history.active
+        verts, edges, faces = get_selected(bm)
+        edge_coords = [[v.co.copy() for v in e.verts] for e in edges]
+        if ring:
+            face_coords = [[v.co.copy() for v in f.verts] for f in faces]
+        else:
+            face_coords = []
 
-    # restore
-    bm.select_history.clear()
-    for elem in select_history:
-        bm.select_history.add(elem)
-    bm.faces.active = active_face
+    if r != {'CANCELLED'} or not ring and toggle:
+        bpy.ops.mesh.select_all(context_dict, False, action='DESELECT')
+        context.tool_settings.mesh_select_mode = mode
+        if mode == [False, False, True]:
+            for f in faces_pre:
+                f.select = True
+        elif not mode[0]:
+            for f in faces_pre:
+                f.select = True
+            for e in edges_pre:
+                e.select = True
+        else:
+            for f in faces_pre:
+                f.select = True
+            for e in edges_pre:
+                e.select = True
+            for v in verts_pre:
+                v.select = True
+
+        # restore
+        bm.select_history.clear()
+        for elem in select_history:
+            bm.select_history.add(elem)
+        bm.faces.active = active_face
 
     return active, edge_coords, face_coords
 
