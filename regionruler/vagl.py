@@ -19,14 +19,12 @@
 
 import math
 import contextlib
-from functools import wraps
-# from itertools import chain
+import functools
+import inspect
 
 import bpy
-from bpy.props import *
 import blf
-# import mathutils as Math
-from mathutils import Euler, Vector, Quaternion, Matrix
+from mathutils import Vector, Matrix
 import bgl
 
 
@@ -115,9 +113,15 @@ def glSwitch(attr, value):
 class GCM(contextlib._GeneratorContextManager):
     @classmethod
     def contextmanager(cls, func):
-        @wraps(func)
-        def _func(*args, **kwargs):
-            return cls(func, args, kwargs)
+        sig = inspect.signature(cls.__init__)
+        if '*' in str(sig.parameters['args']):
+            @functools.wraps(func)
+            def _func(*args, **kwargs):
+                return cls(func, *args, **kwargs)
+        else:
+            @functools.wraps(func)
+            def _func(*args, **kwargs):
+                return cls(func, args, kwargs)
         return _func
 
     def enter(self, result=False):

@@ -37,10 +37,11 @@ import math
 import platform
 import ctypes
 from ctypes import Structure, POINTER, addressof, byref, cast, c_bool, c_char,\
-    c_int, c_int8, c_float, c_short, c_void_p, py_object, sizeof
+    c_int, c_int8, c_float, c_short, c_void_p, py_object
 import numpy as np
 import contextlib
-from functools import wraps
+import functools
+import inspect
 
 import bpy
 import bmesh
@@ -365,9 +366,15 @@ def glSwitch(attr, value):
 class GCM(contextlib._GeneratorContextManager):
     @classmethod
     def contextmanager(cls, func):
-        @wraps(func)
-        def _func(*args, **kwargs):
-            return cls(func, args, kwargs)
+        sig = inspect.signature(cls.__init__)
+        if '*' in str(sig.parameters['args']):
+            @functools.wraps(func)
+            def _func(*args, **kwargs):
+                return cls(func, *args, **kwargs)
+        else:
+            @functools.wraps(func)
+            def _func(*args, **kwargs):
+                return cls(func, args, kwargs)
         return _func
 
     def enter(self, result=False):
@@ -842,7 +849,8 @@ def context_py_dict_get(context):
     blend_cdll = ctypes.CDLL('')
     CTX_py_dict_get = blend_cdll.CTX_py_dict_get
     CTX_py_dict_get.restype = c_void_p
-    C = cast(c_void_p(context.as_pointer()), POINTER(Context))
+    addr = super(bpy.types.Context, context).as_pointer()  # 警告抑制の為
+    C = cast(c_void_p(addr), POINTER(Context))
     ptr = CTX_py_dict_get(C)
     if ptr is not None:  # int
         return cast(c_void_p(ptr), py_object).value
@@ -855,11 +863,15 @@ def context_py_dict_set(context, py_dict):
         raise OSError('Linux only')
     blend_cdll = ctypes.CDLL('')
     CTX_py_dict_set = blend_cdll.CTX_py_dict_set
-    C = cast(c_void_p(context.as_pointer()), POINTER(Context))
+    addr = super(bpy.types.Context, context).as_pointer()  # 警告抑制の為
+    C = cast(c_void_p(addr), POINTER(Context))
+    context_dict_back = context_py_dict_get(context)
     if py_dict is not None:
         CTX_py_dict_set(C, py_object(py_dict))
     else:
         CTX_py_dict_set(C, py_object())
+        # CTX_py_dict_set(C, None)
+    return context_dict_back
 
 
 ###############################################################################
@@ -911,7 +923,9 @@ def unified_findnearest(context, bm, mval):
     BPy_BMFace_CreatePyObject.restype = py_object
 
     # view3d_select_exec() ------------------------------------------
-    C = cast(c_void_p(context.as_pointer()), POINTER(Context))
+    # superを使うのは警告対策: PyContext 'as_pointer' not found
+    addr = super(bpy.types.Context, context).as_pointer()
+    C = cast(c_void_p(addr), POINTER(Context))
     view3d_operator_needs_opengl(C)
 
     # EDBM_select_pick() --------------------------------------------
@@ -1127,7 +1141,9 @@ def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
     BPy_BMElem_CreatePyObject.restype = py_object
 
     # edbm_select_loop_invoke() -------------------------------------
-    C = cast(c_void_p(context.as_pointer()), POINTER(Context))
+    # superを使うのは警告対策: PyContext 'as_pointer' not found
+    addr = super(bpy.types.Context, context).as_pointer()
+    C = cast(c_void_p(addr), POINTER(Context))
     view3d_operator_needs_opengl(C)
 
     # mouse_mesh_loop() ---------------------------------------------
@@ -1177,8 +1193,7 @@ def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
 
 
 def find_nearest_ctypes(context, context_dict, bm, mco_region):
-    context_dict_bak = context_py_dict_get(context)
-    context_py_dict_set(context, context_dict)
+    context_dict_bak = context_py_dict_set(context, context_dict)
     find, (eve, eed, efa) = unified_findnearest(context, bm, mco_region)
     context_py_dict_set(context, context_dict_bak)
     if find:
@@ -1190,8 +1205,7 @@ def find_nearest_ctypes(context, context_dict, bm, mco_region):
 
 def find_loop_selection_ctypes(context, context_dict, bm, mco_region, ring,
                                toggle):
-    context_dict_bak = context_py_dict_get(context)
-    context_py_dict_set(context, context_dict)
+    context_dict_bak = context_py_dict_set(context, context_dict)
     edge, elems = mouse_mesh_loop(context, bm, mco_region, False, False,
                                   toggle, ring)
     context_py_dict_set(context, context_dict_bak)
