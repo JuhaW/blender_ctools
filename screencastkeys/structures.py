@@ -20,7 +20,7 @@
 import platform
 from ctypes import CDLL, Structure, POINTER, cast, \
     c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
-    py_object, c_uint
+    py_object, c_uint, c_int8
 
 
 def fields(*field_items):
@@ -52,6 +52,9 @@ def fields(*field_items):
     return _fields_
 
 
+###############################################################################
+# blenkernel / makesdna / windowmanager/ editors
+###############################################################################
 class ListBase(Structure):
     """source/blender/makesdna/DNA_listBase.h: 59"""
     _fields_ = fields(
@@ -758,12 +761,189 @@ Material._fields_ = fields(
 '''
 
 
+class BMEditMesh(Structure):
+    """blenkernel/BKE_editmesh.h"""
+    _fields_ = [
+        ('bm', c_void_p),
+    ]
+
+
+class ViewContext(Structure):
+    """editors/include/ED_view3d.h"""
+    _fields_ = [
+        ('scene', c_void_p),
+        ('obact', c_void_p),
+        ('obedit', c_void_p),
+        ('ar', c_void_p),
+        ('v3d', c_void_p),
+        ('rv3d', c_void_p),
+        ('em', POINTER(BMEditMesh)),
+        ('mval', c_int * 2),
+    ]
+
+
+###############################################################################
+# BMesh
+###############################################################################
+# class c_int8_(c_int8):
+#     """サブクラス化することでPython型へ透過的に変換しなくなる"""
+#     pass
+
+
+class BMHeader(Structure):
+    _fields_ = [
+        ('data', c_void_p),
+        ('index', c_int),
+        ('htype', c_char),
+        # ('hflag', c_char),
+        # ('hflag', c_int8_),
+        ('hflag', c_int8),  # ビット演算の為int型にする
+        ('api_flag', c_char)
+    ]
+
+
+class BMElem(Structure):
+    _fields_ = [
+        ('head', BMHeader),
+    ]
+
+
+class BMVert(Structure):
+    pass
+
+
+class BMEdge(Structure):
+    pass
+
+
+class BMFace(Structure):
+    pass
+
+
+class BMLoop(Structure):
+    pass
+
+
+class BMDiskLink(Structure):
+    _fields_ = [
+        ('next', POINTER(BMEdge)),
+        ('prev', POINTER(BMEdge)),
+    ]
+
+
+BMVert._fields_ = [
+    ('head', BMHeader),
+    ('oflags', c_void_p),  # BMFlagLayer
+    ('co', c_float * 3),
+    ('no', c_float * 3),
+    ('e', POINTER(BMEdge))
+]
+
+BMEdge._fields_ = [
+    ('head', BMHeader),
+    ('oflags', c_void_p),  # BMFlagLayer
+    ('v1', POINTER(BMVert)),
+    ('v2', POINTER(BMVert)),
+    ('l', POINTER(BMLoop)),
+    ('v1_disk_link', BMDiskLink),
+    ('v2_disk_link', BMDiskLink),
+]
+
+BMLoop._fields_ = [
+    ('head', BMHeader),
+
+    ('v', POINTER(BMVert)),
+    ('e', POINTER(BMEdge)),
+    ('f', POINTER(BMFace)),
+
+    ('radial_next', POINTER(BMLoop)),
+    ('radial_prev', POINTER(BMLoop)),
+
+    ('next', POINTER(BMLoop)),
+    ('prev', POINTER(BMLoop)),
+]
+
+
+class BMFace(Structure):
+    _fields_ = [
+        ('head', BMHeader),
+        ('oflags', c_void_p),  # BMFlagLayer
+        ('l_first', c_void_p),  # BMLoop
+        ('len', c_int),
+        ('no', c_float * 3),
+        ('mat_nr', c_short)
+    ]
+
+
+class BMesh(Structure):
+    _fields_ = [
+        ('totvert', c_int),
+        ('totedge', c_int),
+        ('totloop', c_int),
+        ('totface', c_int),
+
+        ('totvertsel', c_int),
+        ('totedgesel', c_int),
+        ('totfacesel', c_int),
+
+        ('elem_index_dirty', c_char),
+
+        ('elem_table_dirty', c_char),
+
+        ('vpool', c_void_p),  # BLI_mempool
+        ('epool', c_void_p),  # BLI_mempool
+        ('lpool', c_void_p),  # BLI_mempool
+        ('fpool', c_void_p),  # BLI_mempool
+
+        ('vtable', POINTER(POINTER(BMVert))),
+        ('etable', POINTER(POINTER(BMEdge))),
+        ('ftable', POINTER(POINTER(BMFace))),
+
+        ('vtable_tot', c_int),
+        ('etable_tot', c_int),
+        ('ftable_tot', c_int),
+    ]
+
+
+class BMWalker(Structure):
+    _fields_ = [
+        ('begin_htype', c_char),      # only for validating input
+        ('begin', c_void_p),  # void  (*begin) (struct BMWalker *walker, void *start)
+        ('step', c_void_p),  # void *(*step)  (struct BMWalker *walker)
+        ('yield ', c_void_p),  # void *(*yield) (struct BMWalker *walker)
+        ('structsize', c_int),
+        ('order', c_int),  # enum BMWOrder
+        ('valid_mask', c_int),
+
+        # runtime
+        ('layer', c_int),
+
+        ('bm', POINTER(BMesh)),
+        ('worklist', c_void_p),  # BLI_mempool
+        ('states', ListBase),
+
+        # these masks are to be tested against elements BMO_elem_flag_test(),
+        # should never be accessed directly only through BMW_init() and bmw_mask_check_*() functions
+        ('mask_vert', c_short),
+        ('mask_edge', c_short),
+        ('mask_face', c_short),
+
+        ('flag', c_int),  # enum BMWFlag
+
+        ('visit_set', c_void_p),  # struct GSet *visit_set
+        ('visit_set_alt', c_void_p),  # struct GSet *visit_set_alt
+        ('depth', c_int),
+
+        ('dummy', c_int * 4)  # enumのサイズが不明な為
+    ]
+
+
 ###############################################################################
 def context_py_dict_get(context):
     """CTX_py_dict_get
     :type context: bpy.types.Context
     """
-    addr = c_void_p(context.as_pointer())
+    addr = c_void_p(context.__class__.as_pointer(context))
     C = cast(addr, POINTER(bContext)).contents
     if C.data.py_context is None:  # NULL
         return None
@@ -779,7 +959,7 @@ def context_py_dict_set(context, py_dict):
     """
     py_dict_bak = context_py_dict_get(context)
 
-    addr = c_void_p(context.as_pointer())
+    addr = c_void_p(context.__class__.as_pointer(context))
     C = cast(addr, POINTER(bContext)).contents
     if isinstance(py_dict, dict):
         C.data.py_context = c_void_p(id(py_dict))
@@ -795,15 +975,14 @@ def test_platform():
 
 def context_py_dict_get_linux(context):
     """ctypes.CDLLを用いる方法"""
-    class bContext(Structure):
-        pass
 
     if not test_platform():
         raise OSError('Linux only')
     blend_cdll = CDLL('')
     CTX_py_dict_get = blend_cdll.CTX_py_dict_get
     CTX_py_dict_get.restype = c_void_p
-    C = cast(c_void_p(context.as_pointer()), POINTER(bContext))
+    addr = context.__class__.as_pointer(context)  # 警告抑制の為
+    C = cast(c_void_p(addr), POINTER(bContext))
     ptr = CTX_py_dict_get(C)
     if ptr is not None:  # int
         return cast(c_void_p(ptr), py_object).value
@@ -813,18 +992,20 @@ def context_py_dict_get_linux(context):
 
 def context_py_dict_set_linux(context, py_dict):
     """ctypes.CDLLを用いる方法"""
-    class bContext(Structure):
-        pass
 
     if not test_platform():
         raise OSError('Linux only')
     blend_cdll = CDLL('')
     CTX_py_dict_set = blend_cdll.CTX_py_dict_set
-    C = cast(c_void_p(context.as_pointer()), POINTER(bContext))
+    addr = context.__class__.as_pointer(context)  # 警告抑制の為
+    C = cast(c_void_p(addr), POINTER(bContext))
+    context_dict_back = context_py_dict_get(context)
     if py_dict is not None:
         CTX_py_dict_set(C, py_object(py_dict))
     else:
-        CTX_py_dict_set(C, py_object())
+        # CTX_py_dict_set(C, py_object())
+        CTX_py_dict_set(C, None)
+    return context_dict_back
 
 
 ###############################################################################

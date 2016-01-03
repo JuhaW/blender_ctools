@@ -32,12 +32,9 @@ bl_info = {
 }
 
 
-import sys
 import math
-import platform
 import ctypes
-from ctypes import Structure, POINTER, addressof, byref, cast, c_bool, c_char,\
-    c_int, c_int8, c_float, c_short, c_void_p, py_object
+from ctypes import addressof, byref, c_bool
 import numpy as np
 import contextlib
 import functools
@@ -52,6 +49,7 @@ import blf
 # from bpy_extras.view3d_utils import location_3d_to_region_2d as project
 
 from .utils import AddonPreferences, SpaceProperty, operator_call
+from .structures import *
 
 
 # glVertexへ渡すZ値。
@@ -638,191 +636,8 @@ class GLSettings:
 
 
 ###############################################################################
-# ctypes
+# Find - ctypes
 ###############################################################################
-class Context(Structure):
-    pass
-
-
-class BMEditMesh(Structure):
-    _fields_ = [
-        ('bm', c_void_p),
-    ]
-
-
-class ViewContext(Structure):
-    _fields_ = [
-        ('scene', c_void_p),
-        ('obact', c_void_p),
-        ('obedit', c_void_p),
-        ('ar', c_void_p),
-        ('v3d', c_void_p),
-        ('rv3d', c_void_p),
-        ('em', POINTER(BMEditMesh)),
-        ('mval', c_int * 2),
-    ]
-
-
-class c_int8_(c_int8):
-    """サブクラス化することでPython型へ透過的に変換しなくなる"""
-    pass
-
-
-class BMHeader(Structure):
-    _fields_ = [
-        ('data', c_void_p),
-        ('index', c_int),
-        ('htype', c_char),
-        # ('hflag', c_char),
-        ('hflag', c_int8_),  # ビット演算の為int型にする
-        ('api_flag', c_char)
-    ]
-
-
-class BMElem(Structure):
-    _fields_ = [
-        ('head', BMHeader),
-    ]
-
-
-class BMVert(Structure):
-    pass
-
-
-class BMEdge(Structure):
-    pass
-
-
-class BMFace(Structure):
-    pass
-
-
-class BMLoop(Structure):
-    pass
-
-
-class BMDiskLink(Structure):
-    _fields_ = [
-        ('next', POINTER(BMEdge)),
-        ('prev', POINTER(BMEdge)),
-    ]
-
-
-BMVert._fields_ = [
-    ('head', BMHeader),
-    ('oflags', c_void_p),  # BMFlagLayer
-    ('co', c_float * 3),
-    ('no', c_float * 3),
-    ('e', POINTER(BMEdge))
-]
-
-BMEdge._fields_ = [
-    ('head', BMHeader),
-    ('oflags', c_void_p),  # BMFlagLayer
-    ('v1', POINTER(BMVert)),
-    ('v2', POINTER(BMVert)),
-    ('l', POINTER(BMLoop)),
-    ('v1_disk_link', BMDiskLink),
-    ('v2_disk_link', BMDiskLink),
-]
-
-BMLoop._fields_ = [
-    ('head', BMHeader),
-
-    ('v', POINTER(BMVert)),
-    ('e', POINTER(BMEdge)),
-    ('f', POINTER(BMFace)),
-
-    ('radial_next', POINTER(BMLoop)),
-    ('radial_prev', POINTER(BMLoop)),
-
-    ('next', POINTER(BMLoop)),
-    ('prev', POINTER(BMLoop)),
-]
-
-class BMFace(Structure):
-    _fields_ = [
-        ('head', BMHeader),
-        ('oflags', c_void_p),  # BMFlagLayer
-        ('l_first', c_void_p),  # BMLoop
-        ('len', c_int),
-        ('no', c_float * 3),
-        ('mat_nr', c_short)
-    ]
-
-
-class BMesh(Structure):
-    _fields_ = [
-        ('totvert', c_int),
-        ('totedge', c_int),
-        ('totloop', c_int),
-        ('totface', c_int),
-
-        ('totvertsel', c_int),
-        ('totedgesel', c_int),
-        ('totfacesel', c_int),
-
-        ('elem_index_dirty', c_char),
-
-        ('elem_table_dirty', c_char),
-
-        ('vpool', c_void_p),  # BLI_mempool
-        ('epool', c_void_p),  # BLI_mempool
-        ('lpool', c_void_p),  # BLI_mempool
-        ('fpool', c_void_p),  # BLI_mempool
-
-        ('vtable', POINTER(POINTER(BMVert))),
-        ('etable', POINTER(POINTER(BMEdge))),
-        ('ftable', POINTER(POINTER(BMFace))),
-
-        ('vtable_tot', c_int),
-        ('etable_tot', c_int),
-        ('ftable_tot', c_int),
-    ]
-
-
-class ListBase(Structure):
-    """source/blender/makesdna/DNA_listBase.h: 59"""
-    _fields_ = [
-        ('first', c_void_p),
-        ('last', c_void_p)
-    ]
-
-
-class BMWalker(Structure):
-    _fields_ = [
-        ('begin_htype', c_char),      # only for validating input
-        ('begin', c_void_p),  # void  (*begin) (struct BMWalker *walker, void *start)
-        ('step', c_void_p),  # void *(*step)  (struct BMWalker *walker)
-        ('yield ', c_void_p),  # void *(*yield) (struct BMWalker *walker)
-        ('structsize', c_int),
-        ('order', c_int),  # enum BMWOrder
-        ('valid_mask', c_int),
-
-        # runtime
-        ('layer', c_int),
-
-        ('bm', POINTER(BMesh)),
-        ('worklist', c_void_p),  # BLI_mempool
-        ('states', ListBase),
-
-        # these masks are to be tested against elements BMO_elem_flag_test(),
-        # should never be accessed directly only through BMW_init() and bmw_mask_check_*() functions
-        ('mask_vert', c_short),
-        ('mask_edge', c_short),
-        ('mask_face', c_short),
-
-        ('flag', c_int),  # enum BMWFlag
-
-        ('visit_set', c_void_p),  # struct GSet *visit_set
-        ('visit_set_alt', c_void_p),  # struct GSet *visit_set_alt
-        ('depth', c_int),
-
-        ('dummy', c_int * 4)  # enumのサイズが不明な為
-    ]
-
-
-
 BMW_VERT_SHELL = 0
 BMW_LOOP_SHELL = 1
 BMW_LOOP_SHELL_WIRE = 2
@@ -843,40 +658,7 @@ BMW_CUSTOM = 12
 BMW_MAXWALKERS = 13
 
 
-def context_py_dict_get(context):
-    if not test_platform():
-        raise OSError('Linux only')
-    blend_cdll = ctypes.CDLL('')
-    CTX_py_dict_get = blend_cdll.CTX_py_dict_get
-    CTX_py_dict_get.restype = c_void_p
-    addr = super(bpy.types.Context, context).as_pointer()  # 警告抑制の為
-    C = cast(c_void_p(addr), POINTER(Context))
-    ptr = CTX_py_dict_get(C)
-    if ptr is not None:  # int
-        return cast(c_void_p(ptr), py_object).value
-    else:
-        return None
-
-
-def context_py_dict_set(context, py_dict):
-    if not test_platform():
-        raise OSError('Linux only')
-    blend_cdll = ctypes.CDLL('')
-    CTX_py_dict_set = blend_cdll.CTX_py_dict_set
-    addr = super(bpy.types.Context, context).as_pointer()  # 警告抑制の為
-    C = cast(c_void_p(addr), POINTER(Context))
-    context_dict_back = context_py_dict_get(context)
-    if py_dict is not None:
-        CTX_py_dict_set(C, py_object(py_dict))
-    else:
-        CTX_py_dict_set(C, py_object())
-        # CTX_py_dict_set(C, None)
-    return context_dict_back
-
-
-###############################################################################
-# Find - ctypes
-###############################################################################
+# Find nearest ------------------------------------------------------
 mval_prev = [-1, -1]
 
 
@@ -923,9 +705,9 @@ def unified_findnearest(context, bm, mval):
     BPy_BMFace_CreatePyObject.restype = py_object
 
     # view3d_select_exec() ------------------------------------------
-    # superを使うのは警告対策: PyContext 'as_pointer' not found
-    addr = super(bpy.types.Context, context).as_pointer()
-    C = cast(c_void_p(addr), POINTER(Context))
+    # __class__rを使うのは警告対策: PyContext 'as_pointer' not found
+    addr = context.__class__.as_pointer(context)
+    C = cast(c_void_p(addr), POINTER(bContext))
     view3d_operator_needs_opengl(C)
 
     # EDBM_select_pick() --------------------------------------------
@@ -1141,9 +923,9 @@ def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
     BPy_BMElem_CreatePyObject.restype = py_object
 
     # edbm_select_loop_invoke() -------------------------------------
-    # superを使うのは警告対策: PyContext 'as_pointer' not found
-    addr = super(bpy.types.Context, context).as_pointer()
-    C = cast(c_void_p(addr), POINTER(Context))
+    # __class__を使うのは警告対策: PyContext 'as_pointer' not found
+    addr = context.__class__.as_pointer(context)
+    C = cast(c_void_p(addr), POINTER(bContext))
     view3d_operator_needs_opengl(C)
 
     # mouse_mesh_loop() ---------------------------------------------
@@ -2020,7 +1802,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         data['target'] = None
         data['loop_targets'] = None
 
-        if event.type == 'INBETWEEN_MOUSEMOVE':
+        if event.type in {'INBETWEEN_MOUSEMOVE', 'TIMER'}:
             return {'PASS_THROUGH'}
         elif event.type == 'MOUSEMOVE':
             if mco == mco_prev:
@@ -2193,6 +1975,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         else:
             if self.fond_area_prev:
                 self.fond_area_prev.tag_redraw()
+
         data['target_prev'] = data['target']
         data['loop_targets_prev'] = data['loop_targets']
         if data['target'] or data['loop_targets']:
