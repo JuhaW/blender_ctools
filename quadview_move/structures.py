@@ -17,39 +17,72 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
+"""
+>>> import ctypes
+>>> blend_cdll = ctypes.CDLL('')
+>>> # call function
+>>> EDBM_vert_find_nearest_ex = blend_cdll.EDBM_vert_find_nearest_ex
+>>> EDBM_vert_find_nearest_ex.restype = POINTER(BMVert)
+>>> eve = EDBM_vert_find_nearest_ex(ctypes.byref(vc), ctypes.byref(dist), \
+                                    ctypes.c_bool(1), use_cycle)
+>>> # address -> function
+>>> addr = ctypes.cast(EDBM_vert_find_nearest_ex, ctypes.c_void_p).value
+>>> functype = ctypes.CFUNCTYPE(POINTER(BMVert), POINTER(ViewContext),
+                   POINTER(ctypes.c_float), ctypes.c_bool, ctypes.c_bool)
+>>> func = functype(addr)
+>>> eve = func(ctypes.byref(vc), ctypes.byref(dist), ctypes.c_bool(1), \
+               use_cycle)
+"""
+
+
+import re
 import platform
+import ctypes
 from ctypes import CDLL, Structure, POINTER, cast, \
     c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
-    py_object, c_uint, c_int8
+    py_object, c_uint, c_int8, c_uint8, CFUNCTYPE
+
+
+class c_void:
+    pass
 
 
 def fields(*field_items):
-    _fields_ = []
+    r_fields = []
 
-    member_type = None
+    type = None
     for item in field_items:
-        if isinstance(item, (list, tuple)):
-            t = None
-            i = 0
-            for sub_item in item:
-                if not isinstance(sub_item, str):
-                    t = sub_item
-                    i += 1
-            if len(item) < 2 or t is None:
-                raise ValueError('tuple/list内には型とメンバ名が必要')
-            if i != 1:
-                raise ValueError('tuple/list内には型は一個のみ必要')
-            for sub_item in item:
-                if isinstance(sub_item, str):
-                    _fields_.append((sub_item, t))
-        elif isinstance(item, str):
-            if member_type is None:
+        if isinstance(item, str):
+            if type is None:
                 raise ValueError('最初の要素は型でないといけない')
-            _fields_.append((item, member_type))
+            m = re.match('(\**)(\w+)([\[\d\]]+)?$', item)  # 括弧は未対応
+            if not m:
+                raise ValueError('メンバ指定文字が間違ってる: {}'.format(item))
+            ptr, name, num = m.groups()
+            t = type
+            if t is c_void:
+                if ptr:
+                    t = c_void_p
+                    ptr = ptr[1:]
+                else:
+                    raise ValueError('c_voidを使う場合はポインタ表記必須')
+            if ptr:
+                for _ in range(len(ptr)):
+                    t = POINTER(t)
+            if num:
+                # cとctypesでは逆になる
+                for n in reversed(re.findall('\[(\d+)\]', num)):
+                    t *= int(n)
+            r_fields.append((name, t))
         else:
-            member_type = item
+            type = item
 
-    return _fields_
+    return r_fields
+
+
+def set_fields(cls, *field_items):
+    """'_fields_'のスペルミス多発の為"""
+    cls._fields_ = fields(*field_items)
 
 
 ###############################################################################
@@ -88,7 +121,7 @@ View2D._fields_ = fields(
     rcti, 'vert', 'hor',  # vert - vertical scrollbar region hor - horizontal scrollbar region
     rcti, 'mask',  # region (in screenspace) within which 'cur' can be viewed
 
-    c_float * 2, 'min', 'max',  # min/max sizes of 'cur' rect (only when keepzoom not set)
+    c_float, 'min[2]', 'max[2]',  # min/max sizes of 'cur' rect (only when keepzoom not set)
     c_float, 'minzoom', 'maxzoom',  # allowable zoom factor range (only when (keepzoom & V2D_LIMITZOOM)) is set
 
     c_short, 'scroll',  # scroll - scrollbars to display (bitflag)
@@ -106,7 +139,7 @@ View2D._fields_ = fields(
 
     c_short, 'around',  # pivot point for transforms (rotate and scale)
 
-    POINTER(c_float), 'tab_offset',  # different offset per tab, for buttons
+    c_float, '*tab_offset',  # different offset per tab, for buttons
     c_int, 'tab_num',  # number of tabs stored
     c_int, 'tab_cur',  # current tab
 
@@ -120,7 +153,7 @@ class ARegionType(Structure):
     """BKE_screen.h: 116"""
 
 ARegionType._fields_ = fields(
-    POINTER(ARegionType), 'next', 'prev',
+    ARegionType, '*next', '*prev',
 
     c_int, 'regionid',  # unique identifier within this space, defines RGN_TYPE_xxxx
 
@@ -225,7 +258,7 @@ class ScrArea(Structure):
     """DNA_screen_types.h: 202"""
 
 ScrArea._fields_ = fields(
-    POINTER(ScrArea), 'next', 'prev',
+    ScrArea, '*next', '*prev',
 
     c_void_p, 'v1', 'v2', 'v3', 'v4',  # ordered (bl, tl, tr, br)
 
@@ -243,7 +276,7 @@ ScrArea._fields_ = fields(
                                    # runtime variable, updated by executing operators
     c_char, 'temp', 'pad',
 
-    POINTER(SpaceType), 'type',  # callbacks for this space type
+    SpaceType, '*type',  # callbacks for this space type
 
     ListBase, 'spacedata',  # SpaceLink
     ListBase, 'regionbase',  # ARegion
@@ -257,7 +290,7 @@ class ARegion(Structure):
     """DNA_screen_types.h: 229"""
 
 ARegion._fields_ = fields(
-    POINTER(ARegion), 'next', 'prev',
+    ARegion, '*next', '*prev',
 
     View2D, 'v2d',  # 2D-View scrolling/zoom info (most regions are 2d anyways)
     rcti, 'winrct',  # coordinates of region
@@ -279,7 +312,7 @@ ARegion._fields_ = fields(
     c_short, 'flagfullscreen',  # temporary copy of flag settings for clean fullscreen
     c_short, 'pad',
 
-    POINTER(ARegionType), 'type',  # callbacks for this region type
+    ARegionType, '*type',  # callbacks for this region type
 
     ListBase, 'uiblocks',  # uiBlock
     ListBase, 'panels',  # Panel
@@ -300,23 +333,23 @@ class RegionView3D(Structure):
     """DNA_view3d_types.h: 86"""
 
 RegionView3D._fields_ = fields(
-    c_float * 4 * 4, 'winmat',  # GL_PROJECTION matrix
-    c_float * 4 * 4, 'viewmat',  # GL_MODELVIEW matrix
-    c_float * 4 * 4, 'viewinv',  # inverse of viewmat
-    c_float * 4 * 4, 'persmat',  # viewmat*winmat
-    c_float * 4 * 4, 'persinv',  # inverse of persmat
-    c_float * 4, 'viewcamtexcofac',  # offset/scale for camera glsl texcoords
+    c_float, 'winmat[4][4]',  # GL_PROJECTION matrix
+    c_float, 'viewmat[4][4]',  # GL_MODELVIEW matrix
+    c_float, 'viewinv[4][4]',  # inverse of viewmat
+    c_float, 'persmat[4][4]',  # viewmat*winmat
+    c_float, 'persinv[4][4]',  # inverse of persmat
+    c_float, 'viewcamtexcofac[4]',  # offset/scale for camera glsl texcoords
 
     # viewmat/persmat multiplied with object matrix, while drawing and selection
-    c_float * 4 * 4, 'viewmatob',
-    c_float * 4 * 4, 'persmatob',
+    c_float, 'viewmatob[4][4]',
+    c_float, 'persmatob[4][4]',
 
     # user defined clipping planes
-    c_float * 4 * 6, 'clip',  # clip[6][4]
-    c_float * 4 * 6, 'clip_local',  # clip_local[6][4]  clip in object space, means we can test for clipping in editmode without first going into worldspace
+    c_float, 'clip[6][4]',
+    c_float, 'clip_local[6][4]',  # clip in object space, means we can test for clipping in editmode without first going into worldspace
     c_void_p, 'clipbb',  # struct BoundBox
 
-    POINTER(RegionView3D), 'localvd',  # allocated backup of its self while in localview
+    RegionView3D, '*localvd',  # allocated backup of its self while in localview
     c_void_p, 'render_engine',  # struct RenderEngine
     c_void_p, 'depths',  # struct ViewDepths
     c_void_p, 'gpuoffscreen',
@@ -326,13 +359,13 @@ RegionView3D._fields_ = fields(
     c_void_p, 'smooth_timer',  # struct wmTimer
 
     # transform widget matrix
-    c_float * 4 * 4, 'twmat',
+    c_float, 'twmat[4][4]',
 
-    c_float * 4, 'viewquat',  # view rotation, must be kept normalized
+    c_float, 'viewquat[4]',  # view rotation, must be kept normalized
     c_float, 'dist',  # distance from 'ofs' along -viewinv[2] vector, where result is negative as is 'ofs'
     c_float, 'camdx', 'camdy',  # camera view offsets, 1.0 = viewplane moves entire width/height
     c_float, 'pixsize',  # runtime only
-    c_float * 3, 'ofs',  # view center & orbit pivot, negative of worldspace location, also matches -viewinv[3][0:3] in ortho mode.*/
+    c_float, 'ofs[3]',  # view center & orbit pivot, negative of worldspace location, also matches -viewinv[3][0:3] in ortho mode. 
     c_float, 'camzoom',  # viewport zoom on the camera frame, see BKE_screen_view3d_zoom_to_fac
     c_char, 'is_persp',   # check if persp/ortho view, since 'persp' cant be used for this since
                             # it can have cameras assigned as well. (only set in view3d_winmatrix_set)
@@ -340,22 +373,22 @@ RegionView3D._fields_ = fields(
     c_char, 'view',
     c_char, 'viewlock',
     c_char, 'viewlock_quad',  # options for quadview (store while out of quad view)
-    c_char * 3, 'pad',
-    c_float * 2, 'ofs_lock',  # normalized offset for locked view: (-1, -1) bottom left, (1, 1) upper right
+    c_char, 'pad[3]',
+    c_float, 'ofs_lock[2]',  # normalized offset for locked view: (-1, -1) bottom left, (1, 1) upper right
 
     c_short, 'twdrawflag',
     c_short, 'rflag',
 
     # last view (use when switching out of camera view)
-    c_float * 4, 'lviewquat',
+    c_float, 'lviewquat[4]',
     c_short, 'lpersp', 'lview',  # lpersp can never be set to 'RV3D_CAMOB'
 
     c_float, 'gridview',
-    c_float * 3, 'tw_idot',  # manipulator runtime: (1 - dot) product with view vector (used to check view alignment)
+    c_float, 'tw_idot[3]',  # manipulator runtime: (1 - dot) product with view vector (used to check view alignment)
 
     # active rotation from NDOF or elsewhere
     c_float, 'rot_angle',
-    c_float * 3, 'rot_axis',
+    c_float, 'rot_axis[3]',
 
     c_void_p, 'compositor',  # struct GPUFX
 )
@@ -367,7 +400,7 @@ class GPUFXSettings(Structure):
         c_void_p, 'dof',  # GPUDOFSettings
         c_void_p, 'ssao',  # GPUSSAOSettings
         c_char, 'fx_flag',  # eGPUFXFlags
-        c_char * 7, 'pad',
+        c_char, 'pad[7]',
         )
 
 
@@ -379,14 +412,14 @@ View3D._fields_ = fields(
     ListBase, 'regionbase',  # storage of regions for inactive spaces
     c_int, 'spacetype',
     c_float, 'blockscale',
-    c_short * 8, 'blockhandler',
+    c_short, 'blockhandler[8]',
 
-    c_float * 4, 'viewquat',  # DNA_DEPRECATED
+    c_float, 'viewquat[4]',  # DNA_DEPRECATED
     c_float, 'dist',  # DNA_DEPRECATED
 
     c_float, 'bundle_size',  # size of bundles in reconstructed data
     c_char, 'bundle_drawtype',  # display style for bundle
-    c_char * 3, 'pad',
+    c_char, 'pad[3]',
 
     c_uint, 'lay_prev',  # for active layer toggle
     c_uint, 'lay_used',  # used while drawing
@@ -400,9 +433,9 @@ View3D._fields_ = fields(
     ListBase, 'bgpicbase',
     c_void_p, 'bgpic',  # <struct BGpic> DNA_DEPRECATED # deprecated, use bgpicbase, only kept for do_versions(...)
 
-    POINTER(View3D), 'localvd',  # allocated backup of its self while in localview
+    View3D, '*localvd',  # allocated backup of its self while in localview
 
-    c_char * 64, 'ob_centre_bone',  # optional string for armature bone to define center, MAXBONENAME
+    c_char, 'ob_centre_bone[64]',  # optional string for armature bone to define center, MAXBONENAME
 
     c_uint, 'lay',
     c_int, 'layact',
@@ -416,8 +449,8 @@ View3D._fields_ = fields(
 
     c_float, 'lens', 'grid',
     c_float, 'near', 'far',
-    c_float * 3, 'ofs',  #  DNA_DEPRECATED  # XXX deprecated
-    c_float * 3, 'cursor',
+    c_float, 'ofs[3]',  #  DNA_DEPRECATED  # XXX deprecated
+    c_float, 'cursor[3]',
 
     c_short, 'matcap_icon',  # icon id
 
@@ -441,7 +474,7 @@ View3D._fields_ = fields(
     c_char, 'multiview_eye',  # multiview current eye - for internal use
 
     # built-in shader effects (eGPUFXFlags)
-    c_char * 4, 'pad3',
+    c_char, 'pad3[4]',
 
     # note, 'fx_settings.dof' is currently _not_ allocated,
     # instead set (temporarily) from camera
@@ -474,7 +507,7 @@ class wmSubWindow(Structure):
     """windowmanager/intern/wm_subwindow.c: 67"""
 
 wmSubWindow._fields_ = fields(
-    POINTER(wmSubWindow), 'next', 'prev',
+    wmSubWindow, '*next', '*prev',
     rcti, 'winrct',
     c_int, 'swinid',
 )
@@ -484,13 +517,13 @@ class wmEvent(Structure):
     """windowmanager/WM_types.h: 431"""
 
 wmEvent._fields_ = fields(
-    POINTER(wmEvent), 'next', 'prev',
+    wmEvent, '*next', '*prev',
 
     c_short, 'type',
     c_short, 'val',
     c_int, 'x', 'y',
-    c_int * 2, 'mval',
-    c_char * 6, 'utf8_buf',
+    c_int, 'mval[2]',
+    c_char, 'utf8_buf[6]',
 
     c_char, 'ascii',
     c_char, 'pad',
@@ -532,12 +565,12 @@ class wmOperator(Structure):
     """source/blender/makesdna/DNA_windowmanager_types.h: 344"""
 
 wmOperator._fields_ = fields(
-    POINTER(wmOperator), 'next', 'prev',
+    wmOperator, '*next', '*prev',
 
-    c_char * 64, 'idname',
+    c_char, 'idname[64]',
     c_void_p, 'properties',  # IDProperty
 
-    POINTER(wmOperatorType), 'type',
+    wmOperatorType, '*type',
     c_void_p, 'customdata',
     py_object, 'py_instance',  # python stores the class instance here
 
@@ -545,7 +578,7 @@ wmOperator._fields_ = fields(
     c_void_p, 'reports',  # ReportList
 
     ListBase, 'macro',
-    POINTER(wmOperator), 'opm',
+    wmOperator, '*opm',
     c_void_p, 'layout',  # uiLayout
     c_short, 'flag', c_short * 3, 'pad',
 )
@@ -555,7 +588,7 @@ class wmEventHandler(Structure):
     """source/blender/windowmanager/wm_event_system.h: 45"""
 
 wmEventHandler._fields_ = fields(
-    POINTER(wmEventHandler), 'next', 'prev',
+    wmEventHandler, '*next', '*prev',
 
     c_char, 'type',  # WM_HANDLER_DEFAULT, ...
     c_char, 'flag',  # WM_HANDLER_BLOCKING, ...
@@ -565,21 +598,21 @@ wmEventHandler._fields_ = fields(
     c_void_p, 'bblocal', 'bbwin',  # <const rcti> optional local and windowspace bb
 
     # modal operator handler
-    POINTER(wmOperator), 'op',  # for derived/modal handlers
-    POINTER(ScrArea), 'op_area',  # for derived/modal handlers
-    POINTER(ARegion), 'op_region',  # for derived/modal handlers
+    wmOperator, '*op',  # for derived/modal handlers
+    ScrArea, '*op_area',  # for derived/modal handlers
+    ARegion, '*op_region',  # for derived/modal handlers
     c_short, 'op_region_type',  # for derived/modal handlers
 
     # ui handler
     c_void_p, 'ui_handle',  # <function: wmUIHandlerFunc> callback receiving events
     c_void_p, 'ui_remove',  # <function: wmUIHandlerRemoveFunc> callback when handler is removed
     c_void_p, 'ui_userdata',  # user data pointer
-    POINTER(ScrArea), 'ui_area',  # for derived/modal handlers
-    POINTER(ARegion), 'ui_region',  # for derived/modal handlers
-    POINTER(ARegion), 'ui_menu',  # for derived/modal handlers
+    ScrArea, '*ui_area',  # for derived/modal handlers
+    ARegion, '*ui_region',  # for derived/modal handlers
+    ARegion, '*ui_menu',  # for derived/modal handlers
 
     # drop box handler
-    POINTER(ListBase), 'dropboxes',
+    ListBase, '*dropboxes',
 )
 
 
@@ -587,13 +620,13 @@ class wmWindow(Structure):
     """source/blender/makesdna/DNA_windowmanager_types.h: 175"""
 
 wmWindow._fields_ = fields(
-    POINTER(wmWindow), 'next', 'prev',
+    wmWindow, '*next', '*prev',
 
     c_void_p, 'ghostwin',
 
     c_void_p, 'screen',  # struct bScreen
     c_void_p, 'newscreen',  # struct bScreen
-    c_char * 64, 'screenname',
+    c_char, 'screenname[64]',
 
     c_short, 'posx', 'posy', 'sizex', 'sizey',
     c_short, 'windowstate',
@@ -613,9 +646,9 @@ wmWindow._fields_ = fields(
     # that spawn a new pie right after destruction of last pie
     c_short, 'last_pie_event',
 
-    POINTER(wmEvent), 'eventstate',
+    wmEvent, '*eventstate',
 
-    POINTER(wmSubWindow), 'curswin',
+    wmSubWindow, '*curswin',
 
     c_void_p, 'tweak',  # struct wmGesture
 
@@ -639,11 +672,11 @@ class SpaceText(Structure):
     """source/blender/makesdna/DNA_space_types.h: 981"""
 
 SpaceText._fields_ = fields(
-    POINTER(SpaceText), 'next', 'prev',
+    SpaceText, '*next', '*prev',
     ListBase, 'regionbase',  # storage of regions for inactive spaces
     c_int, 'spacetype',
     c_float, 'blockscale',  # DNA_DEPRECATED
-    c_short * 8, 'blockhandler',  # DNA_DEPRECATED
+    c_short, 'blockhandler[8]',  # DNA_DEPRECATED
 
     c_void_p, 'text',  # struct Text
 
@@ -666,16 +699,16 @@ SpaceText._fields_ = fields(
 
     c_int, 'wordwrap', 'doplugins',
 
-    c_char * 256, 'findstr',  # ST_MAX_FIND_STR
-    c_char * 256, 'replacestr',  # ST_MAX_FIND_STR
+    c_char, 'findstr[256]',  # ST_MAX_FIND_STR
+    c_char, 'replacestr[256]',  # ST_MAX_FIND_STR
 
     c_short, 'margin_column',  # column number to show right margin at
     c_short, 'lheight_dpi',  # actual lineheight, dpi controlled
-    c_char * 4, 'pad',
+    c_char, 'pad[4]',
 
     c_void_p, 'drawcache',  # cache for faster drawing
 
-    c_float * 2, 'scroll_accum',  # runtime, for scroll increments smaller than a line
+    c_float, 'scroll_accum[2]',  # runtime, for scroll increments smaller than a line
 )
 
 
@@ -684,11 +717,11 @@ class bContext(Structure):
     class bContext_wm(Structure):
         _fields_ = fields(
             c_void_p, 'manager',  # struct wmWindowManager
-            POINTER(wmWindow), 'window',
+            wmWindow, '*window',
             c_void_p, 'screen',  # struct bScreen
-            POINTER(ScrArea), 'area',
-            POINTER(ARegion), 'region',
-            POINTER(ARegion), 'menu',
+            ScrArea, '*area',
+            ARegion, '*region',
+            ARegion, '*menu',
             c_void_p, 'store',  # struct bContextStore
             c_char_p, 'operator_poll_msg',  # reason for poll failing
         )
@@ -719,9 +752,9 @@ class ID(Structure):
 
 ID._fields_ = fields(
     c_void_p, 'next', 'prev',
-    POINTER(ID), 'newid',
+    ID, '*newid',
     c_void_p, 'lib',  # <struct Library>
-    c_char * 66, 'name',  # MAX_ID_NAME
+    c_char, 'name[66]',  # MAX_ID_NAME
     c_short, 'flag',
     c_int, 'us',
     c_int, 'icon_id', 'pad2',
@@ -761,25 +794,402 @@ Material._fields_ = fields(
 '''
 
 
+class DerivedMesh(Structure):
+    """blenkernel/BKE_DerivedMesh.h: 177"""
+
+
 class BMEditMesh(Structure):
-    """blenkernel/BKE_editmesh.h"""
-    _fields_ = [
-        ('bm', c_void_p),
-    ]
+    """blenkernel/BKE_editmesh.h: 53"""
+
+
+# tessellation face, see MLoop/MPoly for the real face data
+class MFace(Structure):
+    """DNA_meshdata_types.h: 41"""
+    _fields_ = fields(
+        c_uint, 'v1', 'v2', 'v3', 'v4',
+        c_short, 'mat_nr',
+        c_char, 'edcode', 'flag',  # we keep edcode, for conversion to edges draw flags in old files
+    )
+
+
+class MEdge(Structure):
+    """DNA_meshdata_types.h: 47"""
+    _fields_ = fields(
+        c_uint, 'v1', 'v2',
+        c_char, 'crease', 'bweight',
+        c_short, 'flag',
+    )
+
+
+class MDeformWeight(Structure):
+    """DNA_meshdata_types.h: 53"""
+    _fields_ = fields(
+        c_int, 'def_nr',
+        c_float, 'weight',
+    )
+
+
+class MDeformVert(Structure):
+    """DNA_meshdata_types.h: 58"""
+    _fields_ = fields(
+        c_void, '*dw',  # struct MDeformWeight
+        c_int, 'totweight',
+        c_int, 'flag',  # flag only in use for weightpaint now
+    )
+
+
+class MVert(Structure):
+    """DNA_meshdata_types.h: 64"""
+    _fields_ = fields(
+        c_float, 'co[3]',
+        c_short, 'no[3]',
+        c_char, 'flag', 'bweight',
+    )
+
+
+# * tessellation vertex color data.
+# * at the moment alpha is abused for vertex painting and not used for transparency, note that red and blue are swapped
+class MCol(Structure):
+    _fields_ = fields(
+        c_uint8, 'a', 'r', 'g', 'b'  # unsigned char
+    )
+
+
+# new face structure, replaces MFace, which is now only used for storing tessellations.
+class MPoly(Structure):
+    _fields_ = fields(
+        # offset into loop array and number of loops in the face 
+        c_int, 'loopstart',
+        c_int, 'totloop',  # keep signed since we need to subtract when getting the previous loop 
+        c_short, 'mat_nr',
+        c_char, 'flag', 'pad',
+    )
+
+# the e here is because we want to move away from relying on edge hashes.
+class MLoop(Structure):
+    _fields_ = fields(
+        c_uint, 'v',  # vertex index
+        c_uint, 'e',  # edge index
+    )
+
+
+class MLoopTri(Structure):
+    _fields_ = fields(
+        c_uint, 'tri[3]',
+        c_uint, 'poly',
+    )
+
+
+class Mesh(Structure):
+    """DNA_mesh.types.h: 55"""
+    _fields_ = fields(
+        ID, 'id',
+        c_void, '*adt',  # struct AnimData  # animation data (must be immediately after id for utilities to use it)
+
+        c_void, '*bb',  # struct BoundBox
+
+        c_void, '*ipo',  # struct Ipo  # DNA_DEPRECATED  # old animation system, deprecated for 2.5
+        c_void, '*key',  # struct Key
+        c_void, '**mat',  # struct Material
+        c_void, '*mselect',  # struct MSelect
+
+        # BMESH ONLY
+        #new face structures
+        c_void, '*mpoly',  # struct MPoly
+        c_void, '*mtpoly',  # struct MTexPoly
+        c_void, '*mloop',  # struct MLoop
+        c_void, '*mloopuv',  # struct MLoopUV
+        c_void, '*mloopcol',  # struct MLoopCol
+        # END BMESH ONLY
+
+        # mface stores the tessellation (triangulation) of the mesh,
+        # real faces are now stored in nface. 
+        c_void, '*mface',  # struct MFace  # array of mesh object mode faces for tessellation
+        c_void, '*mtface',  # struct MTFace  # store tessellation face UV's and texture here
+        c_void, '*tface',  # struct TFace  # DNA_DEPRECATED   # deprecated, use mtface
+        c_void, '*mvert',  # struct MVert  # array of verts
+        c_void, '*medge',  # struct MEdge  # array of edges
+        c_void, '*dvert',  # struct MDeformVert  # deformgroup vertices
+
+        # array of colors for the tessellated faces, must be number of tessellated
+        # faces * 4 in length
+        c_void, '*mcol',  # struct MCol
+        c_void, '*texcomesh',  # struct Mesh
+
+        # When the object is available, the preferred access method is: BKE_editmesh_from_object(ob)
+        BMEditMesh, '*edit_btmesh',  # not saved in file!
+
+        # 以下略
+    )
+
+
+BMEditMesh._fields_ = fields(
+    c_void_p, 'bm',  # BMesh
+    # this is for undoing failed operations
+    BMEditMesh, '*emcopy',
+    c_int, 'emcopyusers',
+
+    # we store tessellations as triplets of three loops,
+    # which each define a triangle.
+    c_void_p, 'looptris',  # struct BMLoop *(*looptris)[3]
+    c_int, 'tottri',
+
+    # derivedmesh stuff
+    DerivedMesh, '*derivedFinal', '*derivedCage',
+
+    # 以下略
+)
+
+
+class CustomData(Structure):
+    _fields_ = fields(
+        c_void, '*layers',  # CustomDataLayer  # CustomDataLayers, ordered by type
+        c_int, 'typemap[42]',  # runtime only! - maps types to indices of first layer of that type,
+                               # MUST be >= CD_NUMTYPES, but we cant use a define here.
+                               # Correct size is ensured in CustomData_update_typemap assert()
+        c_int, 'pad_i1',
+        c_int, 'totlayer', 'maxlayer',        # number of layers, size of layers array
+        c_int, 'totsize',                   # in editmode, total size of all data layers
+        c_void, '*pool',  # struct BLI_mempool  # (BMesh Only): Memory pool for allocation of blocks
+        c_void, '*external',  # CustomDataExternal  # external file storing customdata layers
+    )
+
+
+class _DerivedMesh_looptris(Structure):
+    _fields_ = fields(
+        c_void, '*array',  # struct MLoopTri
+        c_int, 'num',
+        c_int, 'num_alloc',
+    )
+
+
+DerivedMesh._fields_ = fields(
+    # * Private DerivedMesh data, only for internal DerivedMesh use
+    CustomData, 'vertData', 'edgeData', 'faceData', 'loopData', 'polyData',
+    c_int, 'numVertData', 'numEdgeData', 'numTessFaceData', 'numLoopData', 'numPolyData',
+    c_int, 'needsFree',  # checked on ->release, is set to 0 for cached results
+    c_int, 'deformedOnly',  # set by modifier stack if only deformed from original
+    c_void, '*bvhCache',  # typedef struct LinkNode *BVHCache
+    c_void, '*drawObject',  # struct GPUDrawObject
+    c_int, 'type',  # DerivedMeshType
+    c_float, 'auto_bump_scale',
+    c_int, 'dirty',  # DMDirtyFlag
+    c_int, 'totmat',  # total materials. Will be valid only before object drawing.
+    c_void, '**mat',  # struct Material  # material array. Will be valid only before object drawing
+
+    # warning Typical access is done via #getLoopTriArray, #getNumLoopTri.
+    _DerivedMesh_looptris, 'looptris',
+
+    # use for converting to BMesh which doesn't store bevel weight and edge crease by default
+    c_char, 'cd_flag',
+
+    #* Calculate vert and face normals
+    c_void, '*calcNormals',  # void (*calcNormals)(DerivedMesh * dm)
+
+    #* Calculate loop (split) normals
+    c_void, '*calcLoopNormals',  # void (*calcLoopNormals)(DerivedMesh * dm, const bool use_split_normals, const float split_angle)
+
+    #* Calculate loop (split) normals, and returns split loop normal spacearr.
+    c_void, '*calcLoopNormalsSpaceArray',  # void (*calcLoopNormalsSpaceArray)(DerivedMesh * dm, const bool use_split_normals, const float split_angle,
+                                           #       struct MLoopNorSpaceArray *r_lnors_spacearr)
+
+    c_void, '*calcLoopTangents',  # void (*calcLoopTangents)(DerivedMesh * dm)
+
+    # * Recalculates mesh tessellation
+    c_void, '*recalcTessellation',  # void (*recalcTessellation)(DerivedMesh * dm)
+
+    # * Loop tessellation cache
+    CFUNCTYPE(c_int, POINTER(DerivedMesh)),  '*recalcLoopTri',  # void (*recalcLoopTri)(DerivedMesh * dm)
+    # * accessor functions
+    CFUNCTYPE(POINTER(MLoopTri), POINTER(DerivedMesh)), '*getLoopTriArray',  #const struct MLoopTri *(*getLoopTriArray)(DerivedMesh * dm)
+    CFUNCTYPE(c_int, POINTER(DerivedMesh)), '*getNumLoopTri',  # int (*getNumLoopTri)(DerivedMesh *dm)
+
+    # Misc. Queries
+
+    # Also called in Editmode
+    CFUNCTYPE(c_int, POINTER(DerivedMesh)), 'getNumVerts',  # int (*getNumVerts)(DerivedMesh *dm)
+    CFUNCTYPE(c_int, POINTER(DerivedMesh)), 'getNumEdges',  # int (*getNumEdges)(DerivedMesh *dm)
+    CFUNCTYPE(c_int, POINTER(DerivedMesh)), 'getNumTessFaces',  # int (*getNumTessFaces)(DerivedMesh *dm)
+    CFUNCTYPE(c_int, POINTER(DerivedMesh)), 'getNumLoops',  # int (*getNumLoops)(DerivedMesh *dm)
+    CFUNCTYPE(c_int, POINTER(DerivedMesh)), 'getNumPolys',  # int (*getNumPolys)(DerivedMesh *dm)
+
+    # * Copy a single vert/edge/tessellated face from the derived mesh into
+    # * ``*r_{vert/edge/face}``. note that the current implementation
+    # * of this function can be quite slow, iterating over all
+    # * elements (editmesh)
+
+    c_void, '*getVert',  # void (*getVert)(DerivedMesh * dm, int index, struct MVert * r_vert)
+    c_void, '*getEdge',  # void (*getEdge)(DerivedMesh * dm, int index, struct MEdge * r_edge)
+    c_void, '*getTessFace',  # void (*getTessFace)(DerivedMesh * dm, int index, struct MFace * r_face)
+
+    # * Return a pointer to the entire array of verts/edges/face from the
+    # * derived mesh. if such an array does not exist yet, it will be created,
+    # * and freed on the next ->release(). consider using getVert/Edge/Face if
+    # * you are only interested in a few verts/edges/faces.
+
+    CFUNCTYPE(POINTER(MVert), POINTER(DerivedMesh)), 'getVertArray',  # struct MVert *(*getVertArray)(DerivedMesh * dm)
+    CFUNCTYPE(POINTER(MEdge), POINTER(DerivedMesh)), 'getEdgeArray',  # struct MEdge *(*getEdgeArray)(DerivedMesh * dm)
+    CFUNCTYPE(POINTER(MFace), POINTER(DerivedMesh)), 'getTessFaceArray',  # struct MFace *(*getTessFaceArray)(DerivedMesh * dm)
+    CFUNCTYPE(POINTER(MLoop), POINTER(DerivedMesh)), 'getLoopArray',  # struct MLoop *(*getLoopArray)(DerivedMesh * dm)
+    CFUNCTYPE(POINTER(MPoly), POINTER(DerivedMesh)), 'getPolyArray',  # struct MPoly *(*getPolyArray)(DerivedMesh * dm)
+
+    # * Copy all verts/edges/faces from the derived mesh into
+    # * *{vert/edge/face}_r (must point to a buffer large enough)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), POINTER(MVert)), 'copyVertArray',  # void (*copyVertArray)(DerivedMesh *dm, struct MVert *r_vert);
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), POINTER(MEdge)), 'copyEdgeArray',  # void (*copyEdgeArray)(DerivedMesh *dm, struct MEdge *r_edge);
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), POINTER(MFace)), 'copyTessFaceArray',  # void (*copyTessFaceArray)(DerivedMesh *dm, struct MFace *r_face);
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), POINTER(MLoop)), 'copyLoopArray',  # void (*copyLoopArray)(DerivedMesh *dm, struct MLoop *r_loop);
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), POINTER(MPoly)), 'copyPolyArray',  # void (*copyPolyArray)(DerivedMesh *dm, struct MPoly *r_poly);
+
+    # * Return a copy of all verts/edges/faces from the derived mesh
+    # * it is the caller's responsibility to free the returned pointer
+    c_void, '*dupVertArray',  # struct MVert *(*dupVertArray)(DerivedMesh * dm);
+    c_void, '*dupEdgeArray',  # struct MEdge *(*dupEdgeArray)(DerivedMesh * dm);
+    c_void, '*dupTessFaceArray',  # struct MFace *(*dupTessFaceArray)(DerivedMesh * dm);
+    c_void, '*dupLoopArray',  # struct MLoop *(*dupLoopArray)(DerivedMesh * dm);
+    c_void, '*dupPolyArray',  # struct MPoly *(*dupPolyArray)(DerivedMesh * dm);
+
+    # * Return a pointer to a single element of vert/edge/face custom data
+    # * from the derived mesh (this gives a pointer to the actual data, not
+    # * a copy)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), c_int, c_int), 'getVertData',  # void *(*getVertData)(DerivedMesh *dm, int index, int type)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), c_int, c_int), 'getEdgeData',  # void *(*getEdgeData)(DerivedMesh *dm, int index, int type)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), c_int, c_int), 'getTessFaceData',  # void *(*getTessFaceData)(DerivedMesh *dm, int index, int type)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), c_int, c_int), 'getPolyData',  # void *(*getPolyData)(DerivedMesh *dm, int index, int type)
+
+    # * Return a pointer to the entire array of vert/edge/face custom data
+    # * from the derived mesh (this gives a pointer to the actual data, not
+    # * a copy)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), c_int), 'getVertDataArray',  # void *(*getVertDataArray)(DerivedMesh *dm, int type)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), c_int), 'getEdgeDataArray',  # void *(*getEdgeDataArray)(DerivedMesh *dm, int type)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), c_int), 'getTessFaceDataArray',  # void *(*getTessFaceDataArray)(DerivedMesh *dm, int type)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), c_int), 'getLoopDataArray',  # void *(*getLoopDataArray)(DerivedMesh *dm, int type)
+    CFUNCTYPE(c_void_p, POINTER(DerivedMesh), c_int), 'getPolyDataArray',  # void *(*getPolyDataArray)(DerivedMesh *dm, int type)
+
+    # /** Retrieves the base CustomData structures for
+    #  * verts/edges/tessfaces/loops/facdes*/
+    # CustomData *(*getVertDataLayout)(DerivedMesh * dm);
+    # CustomData *(*getEdgeDataLayout)(DerivedMesh * dm);
+    # CustomData *(*getTessFaceDataLayout)(DerivedMesh * dm);
+    # CustomData *(*getLoopDataLayout)(DerivedMesh * dm);
+    # CustomData *(*getPolyDataLayout)(DerivedMesh * dm);
+    c_void_p, 'getVertDataLayout',
+    c_void_p, 'getEdgeDataLayout',
+    c_void_p, 'getTessFaceDataLayout',
+    c_void_p, 'getLoopDataLayout',
+    c_void_p, 'getPolyDataLayout',
+
+    # /** Copies all customdata for an element source into dst at index dest */
+    # void (*copyFromVertCData)(DerivedMesh *dm, int source, CustomData *dst, int dest);
+    # void (*copyFromEdgeCData)(DerivedMesh *dm, int source, CustomData *dst, int dest);
+    # void (*copyFromFaceCData)(DerivedMesh *dm, int source, CustomData *dst, int dest);
+    c_void_p, 'copyFromVertCData',
+    c_void_p, 'copyFromEdgeCData',
+    c_void_p, 'copyFromFaceCData',
+
+    # /** Optional grid access for subsurf */
+    # int (*getNumGrids)(DerivedMesh *dm);
+    # int (*getGridSize)(DerivedMesh *dm);
+    # struct CCGElem **(*getGridData)(DerivedMesh * dm);
+    # int *(*getGridOffset)(DerivedMesh * dm);
+    # void (*getGridKey)(DerivedMesh *dm, struct CCGKey *key);
+    # DMFlagMat *(*getGridFlagMats)(DerivedMesh * dm);
+    # unsigned int **(*getGridHidden)(DerivedMesh * dm);
+    c_void_p, 'getNumGrids',
+    c_void_p, 'getGridSize',
+    c_void_p, 'getGridData',
+    c_void_p, 'getGridOffset',
+    c_void_p, 'getGridKey',
+    c_void_p, 'getGridFlagMats',
+    c_void_p, 'getGridHidden',
+
+    # /** Iterate over each mapped vertex in the derived mesh, calling the
+    #  * given function with the original vert and the mapped vert's new
+    #  * coordinate and normal. For historical reasons the normal can be
+    #  * passed as a float or short array, only one should be non-NULL.
+    #  */
+    # void (*foreachMappedVert)(DerivedMesh *dm,
+    #                           void (*func)(void *userData, int index, const float co[3],
+    #                                        const float no_f[3], const short no_s[3]),
+    #                           void *userData,
+    #                           DMForeachFlag flag);
+    c_void_p, 'foreachMappedVert',
+
+    # /** Iterate over each mapped edge in the derived mesh, calling the
+    #  * given function with the original edge and the mapped edge's new
+    #  * coordinates.
+    #  */
+    # void (*foreachMappedEdge)(DerivedMesh *dm,
+    #                           void (*func)(void *userData, int index,
+    #                                        const float v0co[3], const float v1co[3]),
+    #                           void *userData);
+    c_void_p, 'foreachMappedEdge',
+
+    # /** Iterate over each mapped loop in the derived mesh, calling the given function
+    #  * with the original loop index and the mapped loops's new coordinate and normal.
+    #  */
+    # void (*foreachMappedLoop)(DerivedMesh *dm,
+    #                           void (*func)(void *userData, int vertex_index, int face_index,
+    #                                        const float co[3], const float no[3]),
+    #                           void *userData,
+    #                           DMForeachFlag flag);
+    c_void_p, 'foreachMappedLoop',
+
+    # /** Iterate over each mapped face in the derived mesh, calling the
+    #  * given function with the original face and the mapped face's (or
+    #  * faces') center and normal.
+    #  */
+    # void (*foreachMappedFaceCenter)(DerivedMesh *dm,
+    #                                 void (*func)(void *userData, int index,
+    #                                              const float cent[3], const float no[3]),
+    #                                 void *userData,
+    #                                 DMForeachFlag flag);
+    CFUNCTYPE(c_int,
+              POINTER(DerivedMesh),
+              CFUNCTYPE(c_int, c_void_p, c_int, c_void_p, c_void_p),
+              c_void_p,
+              c_int),
+    'foreachMappedFaceCenter',
+
+    # * Iterate over all vertex points, calling DO_MINMAX with given args.
+    # *
+    # * Also called in Editmode
+    # void (*getMinMax)(DerivedMesh *dm, float r_min[3], float r_max[3]);
+    c_void_p, 'getMinMax',
+
+    # * Direct Access Operations
+    #  * - Can be undefined
+    # * - Must be defined for modifiers that only deform however
+
+    # * Get vertex location, undefined if index is not valid
+    # void (*getVertCo)(DerivedMesh *dm, int index, float r_co[3]);
+    c_void_p, 'getVertCo',
+
+    # * Fill the array (of length .getNumVerts()) with all vertex locations
+    # void (*getVertCos)(DerivedMesh *dm, float (*r_cos)[3]);
+    CFUNCTYPE(c_int, POINTER(DerivedMesh), c_void_p), 'getVertCos',
+
+    # # * Get smooth vertex normal, undefined if index is not valid
+    # void (*getVertNo)(DerivedMesh *dm, int index, float r_no[3]);
+    # void (*getPolyNo)(DerivedMesh *dm, int index, float r_no[3]);
+
+    # 以下略
+
+)
 
 
 class ViewContext(Structure):
     """editors/include/ED_view3d.h"""
-    _fields_ = [
-        ('scene', c_void_p),
-        ('obact', c_void_p),
-        ('obedit', c_void_p),
-        ('ar', c_void_p),
-        ('v3d', c_void_p),
-        ('rv3d', c_void_p),
-        ('em', POINTER(BMEditMesh)),
-        ('mval', c_int * 2),
-    ]
+    _fields_ = fields(
+        c_void_p, 'scene',
+        c_void_p, 'obact',
+        c_void_p, 'obedit',
+        c_void_p, 'ar',
+        c_void_p, 'v3d',
+        c_void_p, 'rv3d',
+        BMEditMesh, '*em',
+        c_int, 'mval[2]',
+    )
 
 
 ###############################################################################
@@ -791,21 +1201,21 @@ class ViewContext(Structure):
 
 
 class BMHeader(Structure):
-    _fields_ = [
-        ('data', c_void_p),
-        ('index', c_int),
-        ('htype', c_char),
-        # ('hflag', c_char),
-        # ('hflag', c_int8_),
-        ('hflag', c_int8),  # ビット演算の為int型にする
-        ('api_flag', c_char)
-    ]
+    _fields_ = fields(
+        c_void_p, 'data',
+        c_int, 'index',
+        c_char, 'htype',
+        # c_char, 'hflag',
+        # c_int8_, 'hflag',
+        c_int8, 'hflag',  # ビット演算の為int型にする
+        c_char, 'api_flag',
+    )
 
 
 class BMElem(Structure):
-    _fields_ = [
-        ('head', BMHeader),
-    ]
+    _fields_ = fields(
+        BMHeader, 'head',
+    )
 
 
 class BMVert(Structure):
@@ -825,117 +1235,117 @@ class BMLoop(Structure):
 
 
 class BMDiskLink(Structure):
-    _fields_ = [
-        ('next', POINTER(BMEdge)),
-        ('prev', POINTER(BMEdge)),
-    ]
+    _fields_ = fields(
+        BMEdge, '*next',
+        BMEdge, '*prev',
+    )
 
 
-BMVert._fields_ = [
-    ('head', BMHeader),
-    ('oflags', c_void_p),  # BMFlagLayer
-    ('co', c_float * 3),
-    ('no', c_float * 3),
-    ('e', POINTER(BMEdge))
-]
+BMVert._fields_ = fields(
+    BMHeader, 'head',
+    c_void_p, 'oflags',  # BMFlagLayer
+    c_float, 'co[3]',
+    c_float, 'no[3]',
+    BMEdge, '*e',
+)
 
-BMEdge._fields_ = [
-    ('head', BMHeader),
-    ('oflags', c_void_p),  # BMFlagLayer
-    ('v1', POINTER(BMVert)),
-    ('v2', POINTER(BMVert)),
-    ('l', POINTER(BMLoop)),
-    ('v1_disk_link', BMDiskLink),
-    ('v2_disk_link', BMDiskLink),
-]
+BMEdge._fields_ = fields(
+    BMHeader, 'head',
+    c_void_p, 'oflags',  # BMFlagLayer
+    BMVert, '*v1',
+    BMVert, '*v2',
+    BMLoop, '*l',
+    BMDiskLink, 'v1_disk_link',
+    BMDiskLink, 'v2_disk_link',
+)
 
-BMLoop._fields_ = [
-    ('head', BMHeader),
+BMLoop._fields_ = fields(
+    BMHeader, 'head',
 
-    ('v', POINTER(BMVert)),
-    ('e', POINTER(BMEdge)),
-    ('f', POINTER(BMFace)),
+    BMVert, '*v',
+    BMEdge, '*e',
+    BMFace, '*f',
 
-    ('radial_next', POINTER(BMLoop)),
-    ('radial_prev', POINTER(BMLoop)),
+    BMLoop, '*radial_next',
+    BMLoop, '*radial_prev',
 
-    ('next', POINTER(BMLoop)),
-    ('prev', POINTER(BMLoop)),
-]
+    BMLoop, '*next',
+    BMLoop, '*prev',
+)
 
 
 class BMFace(Structure):
-    _fields_ = [
-        ('head', BMHeader),
-        ('oflags', c_void_p),  # BMFlagLayer
-        ('l_first', c_void_p),  # BMLoop
-        ('len', c_int),
-        ('no', c_float * 3),
-        ('mat_nr', c_short)
-    ]
+    _fields_ = fields(
+        BMHeader, 'head',
+        c_void_p, 'oflags',  # BMFlagLayer
+        c_void_p, 'l_first',  # BMLoop
+        c_int, 'len',
+        c_float, 'no[3]',
+        c_short, 'mat_nr',
+    )
 
 
 class BMesh(Structure):
-    _fields_ = [
-        ('totvert', c_int),
-        ('totedge', c_int),
-        ('totloop', c_int),
-        ('totface', c_int),
+    _fields_ = fields(
+        c_int, 'totvert',
+        c_int, 'totedge',
+        c_int, 'totloop',
+        c_int, 'totface',
 
-        ('totvertsel', c_int),
-        ('totedgesel', c_int),
-        ('totfacesel', c_int),
+        c_int, 'totvertsel',
+        c_int, 'totedgesel',
+        c_int, 'totfacesel',
 
-        ('elem_index_dirty', c_char),
+        c_char, 'elem_index_dirty',
 
-        ('elem_table_dirty', c_char),
+        c_char, 'elem_table_dirty',
 
-        ('vpool', c_void_p),  # BLI_mempool
-        ('epool', c_void_p),  # BLI_mempool
-        ('lpool', c_void_p),  # BLI_mempool
-        ('fpool', c_void_p),  # BLI_mempool
+        c_void_p, 'vpool',  # BLI_mempool
+        c_void_p, 'epool',  # BLI_mempool
+        c_void_p, 'lpool',  # BLI_mempool
+        c_void_p, 'fpool',  # BLI_mempool
 
-        ('vtable', POINTER(POINTER(BMVert))),
-        ('etable', POINTER(POINTER(BMEdge))),
-        ('ftable', POINTER(POINTER(BMFace))),
+        BMVert, '**vtable',
+        BMEdge, '**etable',
+        BMFace, '**ftable',
 
-        ('vtable_tot', c_int),
-        ('etable_tot', c_int),
-        ('ftable_tot', c_int),
-    ]
+        c_int, 'vtable_tot',
+        c_int, 'etable_tot',
+        c_int, 'ftable_tot',
+    )
 
 
 class BMWalker(Structure):
-    _fields_ = [
-        ('begin_htype', c_char),      # only for validating input
-        ('begin', c_void_p),  # void  (*begin) (struct BMWalker *walker, void *start)
-        ('step', c_void_p),  # void *(*step)  (struct BMWalker *walker)
-        ('yield ', c_void_p),  # void *(*yield) (struct BMWalker *walker)
-        ('structsize', c_int),
-        ('order', c_int),  # enum BMWOrder
-        ('valid_mask', c_int),
+    _fields_ = fields(
+        c_char, 'begin_htype',  # only for validating input
+        c_void_p, 'begin',  # void  (*begin) (struct BMWalker *walker, void *start)
+        c_void_p, 'step',  # void *(*step)  (struct BMWalker *walker)
+        c_void_p, 'yield',  # void *(*yield) (struct BMWalker *walker)
+        c_int, 'structsize',
+        c_int, 'order',  # enum BMWOrder
+        c_int, 'valid_mask',
 
         # runtime
-        ('layer', c_int),
+        c_int, 'layer',
 
-        ('bm', POINTER(BMesh)),
-        ('worklist', c_void_p),  # BLI_mempool
-        ('states', ListBase),
+        BMesh, '*bm',
+        c_void_p, 'worklist',  # BLI_mempool
+        ListBase, 'states',
 
         # these masks are to be tested against elements BMO_elem_flag_test(),
         # should never be accessed directly only through BMW_init() and bmw_mask_check_*() functions
-        ('mask_vert', c_short),
-        ('mask_edge', c_short),
-        ('mask_face', c_short),
+        c_short, 'mask_vert',
+        c_short, 'mask_edge',
+        c_short, 'mask_face',
 
-        ('flag', c_int),  # enum BMWFlag
+        c_int, 'flag',  # enum BMWFlag
 
-        ('visit_set', c_void_p),  # struct GSet *visit_set
-        ('visit_set_alt', c_void_p),  # struct GSet *visit_set_alt
-        ('depth', c_int),
+        c_void_p, 'visit_set',  # struct GSet *visit_set
+        c_void_p, 'visit_set_alt',  # struct GSet *visit_set_alt
+        c_int, 'depth',
 
-        ('dummy', c_int * 4)  # enumのサイズが不明な為
-    ]
+        c_int, 'dummy[4]',  # enumのサイズが不明な為
+    )
 
 
 ###############################################################################

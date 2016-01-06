@@ -24,7 +24,7 @@ MeshのEditModeに於いて、右クリックで選択される頂点/辺/面を
 bl_info = {
     'name': 'Edit Mesh Draw Nearest',
     'author': 'chromoly',
-    'version': (0, 3),
+    'version': (0, 4),
     'blender': (2, 76, 0),
     'location': 'View3D > Properties Panel > Mesh Display',
     'wiki_url': 'https://github.com/chromoly/blender-EditMeshDrawNearest',
@@ -33,12 +33,13 @@ bl_info = {
 
 
 import math
-import ctypes
-from ctypes import addressof, byref, c_bool
+from ctypes import addressof, sizeof, byref, c_bool, pointer
 import numpy as np
 import contextlib
 import functools
 import inspect
+import collections
+import enum
 
 import bpy
 import bmesh
@@ -74,13 +75,6 @@ class DrawNearestPreferences(
         bpy.types.AddonPreferences):
     bl_idname = __name__
 
-    draw_set = bpy.props.EnumProperty(
-        name='Draw Type',
-        items=(('CUSTOM', 'Custom', ''),
-               ('AUTO', 'Auto', 'Depend on mesh selection mode')),
-        default='AUTO',
-    )
-
     draw_set_vert = bpy.props.EnumProperty(
         name='Draw Vertex',
         items=(('VERT', 'Vert', ''),),
@@ -105,9 +99,6 @@ class DrawNearestPreferences(
 
     use_overlay = bpy.props.BoolProperty(
         name='Overlay',
-    )
-    use_overlay_loop = bpy.props.BoolProperty(
-        name='Overlay Loop',
     )
 
     select_color = bpy.props.FloatVectorProperty(
@@ -142,15 +133,15 @@ class DrawNearestPreferences(
         min=0,
         max=20,
     )
-    face_draw_type = bpy.props.EnumProperty(
-        name='Face Type',
-        items=(('DOT', 'Dot', ''),
-               ('QUAD', 'Quad', '')),
-        default='DOT',
+    face_emphasis = bpy.props.EnumProperty(
+        name='Face Emphasis',
+        items=(('FILL', 'Fill', ''),
+               ('CENTER', 'Center', '')),
+        default='FILL',
     )
     face_stipple = bpy.props.IntProperty(
-        name='Face Stipple',
-        description='Dot pattern size',
+        name='Face Fill Stipple',
+        description='Fill pattern size',
         default=2,
         min=1,
         max=4,
@@ -208,11 +199,16 @@ class DrawNearestPreferences(
         items=(('DEPTH', 'DEPTH_TEST', ''),
                ('STENCIL', 'STENCIL_TEST', ''),
                ('NONE', 'None', '')),
-        default='DEPTH',
+        default='NONE',
     )
-    use_ctypes = bpy.props.BoolProperty(
-        name='Use ctypes',
-        description='Use ctypes python module (faster. linux only)',
+    use_internal = bpy.props.BoolProperty(
+        name='Internal Functions',
+        description='Faster. (linux only)',
+        default=False,
+    )
+    use_derived_mesh = bpy.props.BoolProperty(
+        name='DerivedMesh',
+        description='Use mesh->edit_btmesh->derivedCage',
         default=False,
     )
 
@@ -220,9 +216,8 @@ class DrawNearestPreferences(
         split = self.layout.split()
 
         column = split.column()
-        column.prop(self, 'draw_set', text='Draw')
         col = column.column()
-        col.active = self.draw_set == 'CUSTOM'
+        col.label('Draw:')
         col.label('Vertex:')
         row = col.row()
         sp = row.split(1.0 / 3)
@@ -243,13 +238,12 @@ class DrawNearestPreferences(
         column.prop(self, 'vertex_line_width')
         column.prop(self, 'edge_line_width')
         column.prop(self, 'edge_line_stipple')
-        column.prop(self, 'face_draw_type')
-        if self.face_draw_type == 'DOT':
+        column.prop(self, 'face_emphasis')
+        if self.face_emphasis == 'FILL':
             column.prop(self, 'face_stipple')
         else:
             column.prop(self, 'face_center_size')
             column.prop(self, 'face_center_line_width')
-        column.prop(self, 'use_overlay')
 
         column = split.column()
         column.prop(self, 'use_loop_select')
@@ -259,14 +253,19 @@ class DrawNearestPreferences(
         sub.prop(self, 'loop_select_line_width')
         sub.prop(self, 'loop_select_line_stipple')
         sub.prop(self, 'loop_select_face_stipple')
-        sub.prop(self, 'use_overlay_loop')
 
         column = split.column()
+        column.prop(self, 'use_overlay')
         column.prop(self, 'redraw_all')
         column.prop(self, 'mask')
-        sub = column.column()
+
+        col = column.column()
+        col.separator()
+        col.label('ctypes:')
+        col.prop(self, 'use_derived_mesh')
+        sub = col.column()
         sub.active = test_platform()
-        sub.prop(self, 'use_ctypes')
+        sub.prop(self, 'use_internal')
 
 
 ###############################################################################
@@ -638,24 +637,26 @@ class GLSettings:
 ###############################################################################
 # Find - ctypes
 ###############################################################################
-BMW_VERT_SHELL = 0
-BMW_LOOP_SHELL = 1
-BMW_LOOP_SHELL_WIRE = 2
-BMW_FACE_SHELL = 3
-BMW_EDGELOOP = 4
-BMW_FACELOOP = 5
-BMW_EDGERING = 6
-BMW_EDGEBOUNDARY = 7
-# BMW_RING
-BMW_LOOPDATA_ISLAND = 8
-BMW_ISLANDBOUND = 9
-BMW_ISLAND = 10
-BMW_CONNECTED_VERTEX = 11
-# end of array index enum vals
+class BMWSelect(enum.IntEnum):  # 名前は適当
+    """bmesh/intern/bmesh_walkers.h: 115"""
+    BMW_VERT_SHELL = 0
+    BMW_LOOP_SHELL = 1
+    BMW_LOOP_SHELL_WIRE = 2
+    BMW_FACE_SHELL = 3
+    BMW_EDGELOOP = 4
+    BMW_FACELOOP = 5
+    BMW_EDGERING = 6
+    BMW_EDGEBOUNDARY = 7
+    # BMW_RING
+    BMW_LOOPDATA_ISLAND = 8
+    BMW_ISLANDBOUND = 9
+    BMW_ISLAND = 10
+    BMW_CONNECTED_VERTEX = 11
+    # end of array index enum vals
 
-# do not intitialze function pointers and struct size in BMW_init
-BMW_CUSTOM = 12
-BMW_MAXWALKERS = 13
+    # do not intitialze function pointers and struct size in BMW_init
+    BMW_CUSTOM = 12
+    BMW_MAXWALKERS = 13
 
 
 # Find nearest ------------------------------------------------------
@@ -791,9 +792,23 @@ def unified_findnearest(context, bm, mval):
 
 
 # Find loop / ring --------------------------------------------------
+"""bmesh/intern/bmesh_walkers.h: 75"""
 BMW_MASK_NOP = 0
-BMW_FLAG_TEST_HIDDEN = 1 << 0
+"""bmesh/intern/bmesh_walkers.h: 137"""
 BMW_NIL_LAY = 0
+
+
+class BMWFlag(enum.IntEnum):
+    """bmesh/intern/bmesh_walkers.h: 39"""
+    BMW_FLAG_NOP = 0
+    BMW_FLAG_TEST_HIDDEN = 1 << 0
+
+
+class BMHeaderFlag(enum.IntEnum):  # 名前は適当
+    """bmesh/bmesh_class.h: 291
+    BMHeader->hflag (char)
+    """
+    BM_ELEM_SELECT = 1 << 0
 
 
 def walker_select_count(em, walkercode, start, select, select_mix):
@@ -806,20 +821,19 @@ def walker_select_count(em, walkercode, start, select, select_mix):
     BMW_step = blend_cdll.BMW_step
     BMW_step.restype = POINTER(BMElem)
     BMW_end = blend_cdll.BMW_end
-    BM_ELEM_SELECT = 1 << 0
 
     def BM_elem_flag_test_bool(ele, flag):
-        return ele.contents.head.hflag.value & flag != 0
+        return ele.contents.head.hflag & flag != 0
 
     bm = c_void_p(em.contents.bm)
     walker = BMWalker()
     BMW_init(byref(walker), bm, walkercode,
              BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
-             BMW_FLAG_TEST_HIDDEN,
+             BMWFlag.BMW_FLAG_TEST_HIDDEN,
              BMW_NIL_LAY)
     ele = BMW_begin(byref(walker), start)
     while ele:
-        i = BM_elem_flag_test_bool(ele, BM_ELEM_SELECT) != select
+        i = BM_elem_flag_test_bool(ele, BMHeaderFlag.BM_ELEM_SELECT) != select
         tot[i] += 1
         ele = BMW_step(byref(walker))
     BMW_end(byref(walker))
@@ -845,7 +859,7 @@ def walker_select(em, walkercode, start, select):
     walker = BMWalker()
     BMW_init(byref(walker), bm, walkercode,
              BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
-             BMW_FLAG_TEST_HIDDEN,
+             BMWFlag.BMW_FLAG_TEST_HIDDEN,
              BMW_NIL_LAY)
     ele = BMW_begin(byref(walker), start)
     while ele:
@@ -857,11 +871,11 @@ def walker_select(em, walkercode, start, select):
 
 
 def mouse_mesh_loop_face(em, eed, select, select_clear):
-    return walker_select(em, BMW_FACELOOP, eed, select)
+    return walker_select(em, BMWSelect.BMW_FACELOOP, eed, select)
 
 
 def mouse_mesh_loop_edge_ring(em, eed, select, select_clear):
-    return walker_select(em, BMW_EDGERING, eed, select)
+    return walker_select(em, BMWSelect.BMW_EDGERING, eed, select)
 
 
 def mouse_mesh_loop_edge(em, eed, select, select_clear, select_cycle):
@@ -873,17 +887,19 @@ def mouse_mesh_loop_edge(em, eed, select, select_clear, select_cycle):
     edge_boundary = False
 
     if select_cycle and BM_edge_is_boundary(eed):
-        tot = walker_select_count(em, BMW_EDGELOOP, eed, select, False)
+        tot = walker_select_count(em, BMWSelect.BMW_EDGELOOP, eed,
+                                  select, False)
         if tot[int(select)] == 0:
             edge_boundary = True
-            tot = walker_select_count(em, BMW_EDGEBOUNDARY, eed, select, False)
+            tot = walker_select_count(em, BMWSelect.BMW_EDGEBOUNDARY, eed,
+                                      select, False)
             if tot[int(select)] == 0:
                 edge_boundary = False
 
     if edge_boundary:
-        return walker_select(em, BMW_EDGEBOUNDARY, eed, select)
+        return walker_select(em, BMWSelect.BMW_EDGEBOUNDARY, eed, select)
     else:
-        return walker_select(em, BMW_EDGELOOP, eed, select)
+        return walker_select(em, BMWSelect.BMW_EDGELOOP, eed, select)
 
 
 def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
@@ -902,7 +918,7 @@ def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
         raise OSError('Linux only')
 
     if context.mode != 'EDIT_MESH':
-        return None, None
+        return None, []
 
     # Load functions ------------------------------------------------
     blend_cdll = ctypes.CDLL('')
@@ -940,10 +956,10 @@ def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
 
     eed = EDBM_edge_find_nearest_ex(vc, byref(dist), None, True, True, None)
     if not eed:
-        return None, None
+        return None, []
 
     bm_p = c_void_p(vc_obj.em.contents.bm)
-    edge = BPy_BMEdge_CreatePyObject(bm_p, eed)
+    active_edge = BPy_BMEdge_CreatePyObject(bm_p, eed)
 
     select = True
     select_clear = False
@@ -954,7 +970,7 @@ def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
         select = True
     elif deselect:
         select = False
-    elif select_clear or not edge.select:
+    elif select_clear or not active_edge.select:
         select = True
     elif toggle:
         select = False
@@ -971,7 +987,8 @@ def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
                                            select_cycle)
 
     elems = [BPy_BMElem_CreatePyObject(bm_p, elem) for elem in c_elems]
-    return edge, elems
+
+    return active_edge, elems
 
 
 def find_nearest_ctypes(context, context_dict, bm, mco_region):
@@ -987,18 +1004,30 @@ def find_nearest_ctypes(context, context_dict, bm, mco_region):
 
 def find_loop_selection_ctypes(context, context_dict, bm, mco_region, ring,
                                toggle):
+    """
+    :type context: bpy.types.Context
+    :type context_dict: dict
+    :type bm: bpy.types.BMesh
+    :param mco_region: マウスRegion座標
+    :type mco_region: collections.Sequence
+    :type ring: bool
+    :type toggle: bool
+    :return: active edge と 選択要素のタプル
+    :rtype: T, list
+    """
     context_dict_bak = context_py_dict_set(context, context_dict)
     edge, elems = mouse_mesh_loop(context, bm, mco_region, False, False,
                                   toggle, ring)
     context_py_dict_set(context, context_dict_bak)
-    edge_coords = []
-    face_coords = []
-    if edge and elems:
-        if isinstance(elems[0], bmesh.types.BMEdge):
-            edge_coords = [[v.co.copy() for v in e.verts] for e in elems]
-        elif isinstance(elems[0], bmesh.types.BMFace):
-            face_coords = [[v.co.copy() for v in f.verts] for f in elems]
-    return edge, edge_coords, face_coords
+    return edge, elems
+    # edge_coords = []
+    # face_coords = []
+    # if edge and elems:
+    #     if isinstance(elems[0], bmesh.types.BMEdge):
+    #         edge_coords = [[v.co.copy() for v in e.verts] for e in elems]
+    #     elif isinstance(elems[0], bmesh.types.BMFace):
+    #         face_coords = [[v.co.copy() for v in f.verts] for f in elems]
+    # return edge, edge_coords, face_coords
 
 
 ###############################################################################
@@ -1113,6 +1142,17 @@ def find_nearest(context, context_dict, bm, mco_region):
 
 
 def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
+    """
+    :type context: bpy.types.Context
+    :type context_dict: dict
+    :type bm: bpy.types.BMesh
+    :param mco_region: マウスRegion座標。未使用。
+    :type mco_region: collections.Sequence
+    :type ring: bool
+    :type toggle: bool
+    :return: active edge と 選択要素のタプル
+    :rtype: T, list
+    """
     ts = context.tool_settings
     mode = ts.mesh_select_mode[:]
     if mode[2]:
@@ -1125,31 +1165,32 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
 
     if ring:
         if mode[2]:
-            bpy.ops.mesh.select_mode(False, type='FACE')
+            ts.mesh_select_mode = [False, True, True]
         else:
-            bpy.ops.mesh.select_mode(False, type='EDGE')
+            ts.mesh_select_mode = [False, True, False]
         r = bpy.ops.mesh.edgering_select(
                 context_dict, 'INVOKE_DEFAULT', False,
                 extend=False, deselect=False, toggle=False, ring=True)
     else:
         if toggle:
             bpy.ops.mesh.select_all(context_dict, False, action='DESELECT')
-        bpy.ops.mesh.select_mode(False, type='EDGE')
+        ts.mesh_select_mode = [False, True, False]
         r = bpy.ops.mesh.loop_select(
                 context_dict, 'INVOKE_DEFAULT', False,
                 extend=False, deselect=False, toggle=False, ring=False)
     if r == {'CANCELLED'}:
-        active = None
-        edge_coords = []
-        face_coords = []
+        active_edge = None
+        elems = []
     else:
-        active = bm.select_history.active
+        # bm.select_history.active: vert選択が有効ならBMVert型になり、
+        # edgeが有効ならBMEdge、faceが有効ならBMFaceとなる。
+        # 優先度はvert,edge,faceの順。
+        active_edge = bm.select_history.active
         verts, edges, faces = get_selected(bm)
-        edge_coords = [[v.co.copy() for v in e.verts] for e in edges]
-        if ring:
-            face_coords = [[v.co.copy() for v in f.verts] for f in faces]
+        if mode[2]:
+            elems = faces
         else:
-            face_coords = []
+            elems = edges
 
     if r != {'CANCELLED'} or not ring and toggle:
         bpy.ops.mesh.select_all(context_dict, False, action='DESELECT')
@@ -1176,7 +1217,308 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
             bm.select_history.add(elem)
         bm.faces.active = active_face
 
-    return active, edge_coords, face_coords
+    return active_edge, elems
+
+
+###############################################################################
+# Derived Mesh
+###############################################################################
+class CustomDataType(enum.IntEnum):
+    """DNA_customdata_types.h: 77"""
+    CD_ORIGINDEX = 7
+
+
+"""BKE_customdata.h: 63"""
+ORIGINDEX_NONE = -1
+
+
+class DerivedMeshType(enum.IntEnum):
+    """BKE_DerivedMesh.h:122
+    DerivedMesh->type (int)
+    """
+    # cdderivedmesh.c: generate系
+    DM_TYPE_CDDM = 0
+    # editderivedmesh.c: editmodeで、有効なmodifier無し/deform系
+    DM_TYPE_EDITBMESH = 1
+    # subsurf_ccg.c: subsurf
+    DM_TYPE_CCGDM = 2
+
+
+class DMForeachFlag(enum.IntEnum):
+    """BKE_DerivedMesh.h:158"""
+    DM_FOREACH_NOP = 0
+    # foreachMappedVert, foreachMappedLoop, foreachMappedFaceCenter
+    DM_FOREACH_USE_NORMAL = (1 << 0)
+
+
+dm_cache = {}
+
+
+def get_dm(mesh):
+    mesh_addr = mesh.as_pointer()
+    mesh_p = cast(c_void_p(mesh_addr), POINTER(Mesh))
+    mesh_ = mesh_p.contents
+    em_p = mesh_.edit_btmesh
+    if em_p:
+        em = em_p.contents
+        dm_p = em.derivedCage
+        if dm_p:
+            return dm_p.contents
+    return None
+
+
+def get_dm_attr(mesh, dm, attr):
+    mesh_addr = mesh.as_pointer()
+    if mesh_addr not in dm_cache:
+        dm_cache[mesh_addr] = {}
+    cache = dm_cache[mesh_addr]
+    dm_p = pointer(dm)
+
+    if attr in cache:
+        return cache[attr]
+
+    if attr == 'type':
+        value = dm.type
+
+    elif attr == 'vert_num':
+        value = dm.getNumVerts(dm_p)
+    elif attr == 'edge_num':
+        value = dm.getNumEdges(dm_p)
+    elif attr == 'face_num':
+        value = dm.getNumPolys(dm_p)
+    elif attr == 'loop_num':
+        value = dm.getNumLoops(dm_p)
+
+    elif attr == 'vert_coords':
+        value = (c_float * 3 * get_dm_attr(mesh, dm, 'vert_num'))()
+        dm.getVertCos(dm_p, value)
+
+    elif attr == 'vert_array':
+        value = (MVert * get_dm_attr(mesh, dm, 'vert_num'))()
+        dm.copyVertArray(dm_p, value)
+    elif attr == 'edge_array':
+        value = (MEdge * get_dm_attr(mesh, dm, 'edge_num'))()
+        dm.copyEdgeArray(dm_p, value)
+    elif attr == 'face_array':
+        value = (MPoly * get_dm_attr(mesh, dm, 'face_num'))()
+        dm.copyPolyArray(dm_p, value)
+    elif attr == 'loop_array':
+        value = (MLoop * get_dm_attr(mesh, dm, 'loop_num'))()
+        dm.copyLoopArray(dm_p, value)
+
+    elif attr == 'vert_origindex_array':
+        vert_num = get_dm_attr(mesh, dm, 'vert_num')
+        if dm.type == DerivedMeshType.DM_TYPE_EDITBMESH:
+            value = (c_int * vert_num)(*range(vert_num))
+        else:
+            arr = dm.getVertDataArray(dm_p, CustomDataType.CD_ORIGINDEX)
+            if arr:
+                value = (c_int * vert_num)()
+                ctypes.memmove(value, arr, sizeof(value))
+            else:
+                value = None
+    elif attr == 'edge_origindex_array':
+        edge_num = get_dm_attr(mesh, dm, 'edge_num')
+        if dm.type == DerivedMeshType.DM_TYPE_EDITBMESH:
+            value = (c_int * edge_num)(*range(edge_num))
+        else:
+            arr = dm.getEdgeDataArray(dm_p, CustomDataType.CD_ORIGINDEX)
+            if arr:
+                value = (c_int * edge_num)()
+                ctypes.memmove(value, arr, sizeof(value))
+            else:
+                value = None
+    elif attr == 'face_origindex_array':
+        face_num = get_dm_attr(mesh, dm, 'face_num')
+        if dm.type == DerivedMeshType.DM_TYPE_EDITBMESH:
+            value = (c_int * face_num)(*range(face_num))
+        else:
+            arr = dm.getPolyDataArray(dm_p, CustomDataType.CD_ORIGINDEX)
+            if arr:
+                value = (c_int * face_num)()
+                ctypes.memmove(value, arr, sizeof(value))
+            else:
+                value = None
+
+    elif attr in {'face_center_origindex_np_array', 'face_center_np_array'}:
+        # 1007616個の要素: 4.0s
+        queue = collections.deque()
+        P = POINTER(c_float)
+        def callback(userData, index, cent, no):
+            # この方法だと12.0s
+            # queue = cast(c_void_p(userData), py_object).value
+            # v = list(cast(c_void_p(cent), POINTER(c_float * 3)).contents)
+            # queue.append((index, v))
+            x = cast(cent, P)
+            queue.append((index, (x[0], x[1], x[2])))
+            return 0
+        func = CFUNCTYPE(c_int, c_void_p, c_int, c_void_p, c_void_p)(callback)
+        dm.foreachMappedFaceCenter(dm_p, func, id(queue),
+                                   DMForeachFlag.DM_FOREACH_NOP)
+
+        face_center_origindex_np_array = np.array(
+                [i for i, v in queue], dtype=np.int)
+        sort_order = np.argsort(face_center_origindex_np_array)
+        face_center_origindex_np_array = \
+            face_center_origindex_np_array[sort_order]
+        cache['face_center_origindex_np_array'] = \
+            face_center_origindex_np_array
+
+        face_center_np_array = np.array([v for i, v in queue], dtype=np.float)
+        face_center_np_array = face_center_np_array[sort_order]
+        cache['face_center_np_array'] = face_center_np_array
+
+        if attr == 'face_center_origindex_np_array':
+            value = face_center_origindex_np_array
+        else:
+            value = face_center_np_array
+    else:
+        raise KeyError(attr)
+
+    cache[attr] = value
+    return value
+
+
+def get_bmdm_elems(mesh, bm, elems, require_face_centers, vert_coords=None):
+    """Fallback"""
+    # FIXME
+    dm_vert_elems = {}
+    dm_edge_elems = {}
+    dm_face_elems = {}
+    dm_face_center_elems = {}
+
+    verts = set()
+    edges = set()
+    faces = set()
+    for elem in elems:
+        if isinstance(elem, bmesh.types.BMVert):
+            verts.add(elem)
+        elif isinstance(elem, bmesh.types.BMEdge):
+            edges.add(elem)
+            for v in elem.verts:
+                verts.add(v)
+        else:
+            faces.add(elem)
+            for v in elem.verts:
+                verts.add(v)
+            for e in elem.edges:
+                edges.add(e)
+
+    if vert_coords is not None:
+        for elem in verts:
+            i = elem.index
+            dm_vert_elems[i] = (Vector(vert_coords[i]), i)
+    else:
+        for elem in verts:
+            i = elem.index
+            dm_vert_elems[i] = (elem.co.copy(), i)
+    for elem in edges:
+        i = elem.index
+        dm_edge_elems[i] = ([v.index for v in elem.verts], i)
+    for elem in faces:
+        i = elem.index
+        dm_face_elems[i] = ([v.index for v in elem.verts], i)
+        dm_face_center_elems[i] = (elem.calc_center_median(), i)
+
+    return dm_vert_elems, dm_edge_elems, dm_face_elems, dm_face_center_elems
+
+
+def get_dm_elems(mesh, bm, elems, require_face_centers):
+    dm = get_dm(mesh)
+    if not dm:
+        return get_bmdm_elems(mesh, bm, elems, require_face_centers)
+
+    if get_dm_attr(mesh, dm, 'type') == DerivedMeshType.DM_TYPE_EDITBMESH:
+        vert_coords = get_dm_attr(mesh, dm, 'vert_coords')
+        return get_bmdm_elems(mesh, bm, elems, require_face_centers,
+                              vert_coords)
+
+    elem_types = set((type(elem) for elem in elems))
+    vert_coords = get_dm_attr(mesh, dm, 'vert_coords')
+    vert_origindex_array = get_dm_attr(mesh, dm, 'vert_origindex_array')
+    if bmesh.types.BMVert in elem_types:
+        # vert_array = get_dm_attr(mesh, dm, 'vert_array')
+        pass
+    if bmesh.types.BMEdge in elem_types:
+        edge_array = get_dm_attr(mesh, dm, 'edge_array')
+        edge_origindex_array = get_dm_attr(mesh, dm, 'edge_origindex_array')
+    if bmesh.types.BMFace in elem_types:
+        edge_array = get_dm_attr(mesh, dm, 'edge_array')
+        face_array = get_dm_attr(mesh, dm, 'face_array')
+        loop_array = get_dm_attr(mesh, dm, 'loop_array')
+        edge_origindex_array = get_dm_attr(mesh, dm, 'edge_origindex_array')
+        face_origindex_array = get_dm_attr(mesh, dm, 'face_origindex_array')
+        if require_face_centers:
+            face_center_np_array = get_dm_attr(
+                    mesh, dm, 'face_center_np_array')
+            face_center_origindex_np_array = get_dm_attr(
+                    mesh, dm, 'face_center_origindex_np_array')
+
+    # 要素の二番目は派生元のelemのindex。無けれはNone
+    dm_vert_elems = {}
+    dm_edge_elems = {}
+    dm_face_elems = {}
+    dm_face_center_elems = {}
+
+    for elem in elems:
+        elem_index = elem.index
+
+        if isinstance(elem, bmesh.types.BMVert):
+            orig_index_array = vert_origindex_array
+        elif isinstance(elem, bmesh.types.BMEdge):
+            orig_index_array = edge_origindex_array
+        else:
+            orig_index_array = face_origindex_array
+
+        derived_indices = {}
+        arr = np.ctypeslib.as_array(orig_index_array)
+        for i in np.nonzero(arr == elem_index)[0]:
+            derived_indices[i] = elem_index
+
+        if isinstance(elem, bmesh.types.BMVert):
+            for i, orig_index in derived_indices.items():
+                dm_vert_elems[i] = (Vector(vert_coords[i]), orig_index)
+
+        elif isinstance(elem, bmesh.types.BMEdge):
+            verts = set()
+            for i, orig_index in derived_indices.items():
+                me = edge_array[i]
+                dm_edge_elems[i] = ((me.v1, me.v2), orig_index)
+                verts.add(me.v1)
+                verts.add(me.v2)
+            for i in verts:
+                orig_index = vert_origindex_array[i]
+                dm_vert_elems[i] = (Vector(vert_coords[i]), orig_index)
+
+        else:
+            verts = []
+            edges = []
+            for i, orig_index in derived_indices.items():
+                mp = face_array[i]
+                ls = []
+                for j in range(mp.loopstart, mp.loopstart + mp.totloop):
+                    ml = loop_array[j]
+                    ls.append(ml.v)
+                    verts.append(ml.v)
+                    edges.append(ml.e)
+                dm_face_elems[i] = (ls, orig_index)
+
+            for i in set(verts):
+                orig_index = vert_origindex_array[i]
+                dm_vert_elems[i] = (Vector(vert_coords[i]), orig_index)
+
+            for i in set(edges):
+                orig_index = edge_origindex_array[i]
+                e = edge_array[i]
+                dm_edge_elems[i] = ((e.v1, e.v2), orig_index)
+
+            if require_face_centers:
+                arr = face_center_origindex_np_array == elem.index
+                for i in np.nonzero(arr)[0]:
+                    vec = Vector(face_center_np_array[i])
+                    dm_face_center_elems[i] = (vec, elem.index)
+
+    return dm_vert_elems, dm_edge_elems, dm_face_elems, dm_face_center_elems
 
 
 ###############################################################################
@@ -1321,13 +1663,26 @@ def setpolygontone(enable, size=1):
         bgl.glDisable(bgl.GL_POLYGON_STIPPLE)
 
 
-def get_depth(x, y, fatten=0):
+def get_depth(x, y, fatten=0, buf=None):
     """スクリーン座標x,yのZ値を読む。fatten==0で1pixel,1で3x3の9pixelを返す"""
     size = fatten * 2 + 1
-    buf = bgl.Buffer(bgl.GL_FLOAT, size ** 2)
-    bgl.glReadPixels(x - fatten, y - fatten, size, size,
-                     bgl.GL_DEPTH_COMPONENT, bgl.GL_FLOAT, buf)
-    return list(buf)
+    if buf:
+        # bufはBuffer(GL_FLOAT, (height, width))で作成してあるものとする
+        ls = []
+        h, w = buf.dimensions
+        xmin = max(0, x - fatten)
+        xmax = min(x + fatten, w - 1)
+        ymin = max(0, y - fatten)
+        ymax = min(y + fatten, h - 1)
+        for row in range(ymin, ymax + 1):
+            for col in range(xmin, xmax + 1):
+                ls.append(buf[row][col])
+        return ls
+    else:
+        buf = bgl.Buffer(bgl.GL_FLOAT, size ** 2)
+        bgl.glReadPixels(x - fatten, y - fatten, size, size,
+                         bgl.GL_DEPTH_COMPONENT, bgl.GL_FLOAT, buf)
+        return list(buf)
 
 
 def project(region, rv3d, vec):
@@ -1374,6 +1729,53 @@ def draw_box(xmin, ymin, w, h, z, poly=False):
     bgl.glEnd()
 
 
+def make_paths(edges):
+    """
+    :param edges: [[v1, v2], ...]
+    :type edges: list | tuple
+    :return: [[v1, v2, v3, v1], [v4, v5]]
+    :rtype: list
+    """
+    paths = []
+
+    vert_verts = {}
+    for v1, v2 in edges:
+        if v1 not in vert_verts:
+            vert_verts[v1] = [v2]
+        else:
+            vert_verts[v1].append(v2)
+        if v2 not in vert_verts:
+            vert_verts[v2] = [v1]
+        else:
+            vert_verts[v2].append(v1)
+
+    end_flags = {v: len(others) != 2 for v, others in vert_verts.items()}
+    for vert in vert_verts.keys():
+        verts = vert_verts[vert]
+        while verts:
+            vprev = vert
+            vnext = verts.pop()
+            vert_verts[vnext].remove(vprev)
+            path = [vprev, vnext]
+            while True:
+                if end_flags[vnext]:
+                    if end_flags[path[0]]:  # 開始点、終了点が共に端
+                        break
+                    else:
+                        path.reverse()  # 逆に回る
+                        vprev = vert
+                elif vnext == vert:  # 周状
+                    break
+                else:
+                    vprev = vnext
+                vnext = vert_verts[vprev].pop()
+                vert_verts[vnext].remove(vprev)
+                path.append(vnext)
+            paths.append(path)
+
+    return paths
+
+
 def draw_callback(cls, context):
     cls.remove_invalid_windows()
 
@@ -1410,10 +1812,9 @@ def draw_callback(cls, context):
 
     mco = (event.mouse_x, event.mouse_y)
     target = data['target']  # [type, vert_coords, median]
-    targets = data['loop_targets']  # [edge_coords, face_coords]
 
     do_draw = True
-    if not (target or targets):
+    if not target:
         do_draw = False
     elif data['mco'] != mco:  # 別のOperatorがRUNNING_MODAL
         do_draw = False
@@ -1446,7 +1847,7 @@ def draw_callback(cls, context):
     else:
         solid_object = False
 
-    if target and prefs.use_overlay or targets and prefs.use_overlay_loop:
+    if prefs.use_overlay:
         use_depth = False
     elif solid_view3d and solid_object:
         use_depth = True
@@ -1459,23 +1860,97 @@ def draw_callback(cls, context):
         if buf == 0:
             mask = 'NONE'
 
-    if target:
-        bgl.glColor4f(*prefs.select_color)
+    depth_buffer = bgl.Buffer(bgl.GL_FLOAT, (region.height, region.width))
+    bgl.glReadPixels(region.x, region.y, region.width, region.height,
+                     bgl.GL_DEPTH_COMPONENT, bgl.GL_FLOAT, depth_buffer)
 
-        target_type = target[0]
-        coords_local = target[1]
-        coords = [mat * v for v in coords_local]
-        median = mat * target[2]
+    key, mode, dm_type, verts, edges, faces, face_centers = target
+    vert_coords_local = {i: co for i, (co, orig) in verts.items()}
+    vert_coords = {i: mat * co for i, co in vert_coords_local.items()}
+    face_center_coords = {}
+    for i, (vec, orig) in face_centers.items():
+        face_center_coords[i] = mat * vec
+
+    def draw_faces(emphasis):
+        if emphasis == 'FILL':
+            if use_depth:
+                ED_view3d_polygon_offset(rv3d, 1.0)
+            else:
+                cm = glsettings.region_pixel_space().enter()
+            bgl.glBegin(bgl.GL_TRIANGLES)
+            for v_indices, orig in faces.values():
+                if len(v_indices) == 3:
+                    tris = [(0, 1, 2)]
+                elif len(v_indices) == 4:
+                    if dm_type == DerivedMeshType.DM_TYPE_CCGDM:
+                        tris = [(0, 1, 3), (1, 2, 3)]
+                    else:
+                        tris = [(0, 1, 2), (0, 2, 3)]
+                else:
+                    tris = mathutils.geometry.tessellate_polygon(
+                           [[vert_coords_local[i] for i in v_indices]])
+                for tri in tris:
+                    for i in tri:
+                        j = v_indices[i]
+                        if use_depth:
+                            bgl.glVertex3f(*vert_coords[j])
+                        else:
+                            v = project(region, rv3d, vert_coords[j])
+                            bgl.glVertex3f(v[0], v[1], OVERLAY_DRAW_Z)
+            bgl.glEnd()
+            if use_depth:
+                ED_view3d_polygon_offset(rv3d, 0.0)
+            else:
+                cm.exit()
+        else:
+            with glsettings.region_pixel_space():
+                for i, vec in face_center_coords.items():
+                    if not use_depth or depth_test_result_madians[i]:
+                        r2 = prefs.face_center_size / 2
+                        v = project(region, rv3d, vec)
+                        draw_box(v[0] - r2, v[1] - r2, r2 * 2, r2 * 2,
+                                 OVERLAY_DRAW_Z)
+                bgl.glLineWidth(1)
+
+    def draw_edges():
+        edge_paths = make_paths([v1v2 for v1v2, orig in edges.values()
+                                 if orig != ORIGINDEX_NONE])
+        if use_depth:
+            if solid_object:
+                # 辺が1.0で描画されている為（たぶん）、
+                # すこしずらなさいと重なってしまう
+                ED_view3d_polygon_offset(rv3d, POLYGON_OFFSET_EDGE)
+            else:
+                ED_view3d_polygon_offset(rv3d, 1.0)
+            for path in edge_paths:
+                bgl.glBegin(bgl.GL_LINE_STRIP)
+                for i in path:
+                    vec = vert_coords[i]
+                    bgl.glVertex3f(*vec)
+                bgl.glEnd()
+            ED_view3d_polygon_offset(rv3d, 0.0)
+        else:
+            cm = glsettings.region_pixel_space().enter()
+            for path in edge_paths:
+                bgl.glBegin(bgl.GL_LINE_STRIP)
+                for i in path:
+                    vec = vert_coords[i]
+                    v = project(region, rv3d, vec)
+                    bgl.glVertex3f(v[0], v[1], OVERLAY_DRAW_Z)
+                bgl.glEnd()
+            cm.exit()
+
+    if mode == 'select':
+        bgl.glColor4f(*prefs.select_color)
+        # target_type, target_index, verts, edges, faces, medians = target
 
         offs_pmat = polygon_offset_pers_mat(rv3d, 1)
 
         def depth_test(vec):
+            """描画可なら1を返す"""
             v = project_v3(region.width, region.height,
                            offs_pmat, vec)
-            # v = project(region, rv3d, vec)
-            x = int(v[0]) + region.x
-            y = int(v[1]) + region.y
-            depth3x3 = get_depth(x, y, 1)
+            depth3x3 = get_depth(int(v[0]), int(v[1]), 1, depth_buffer)
             if not (0.0 < v[2] < 1.0):
                 return 0
             for f in depth3x3:
@@ -1486,25 +1961,36 @@ def draw_callback(cls, context):
             return 0
 
         # マスクを描画するから今の内に求めておく
-        depth_test_result_coords = [depth_test(v) for v in coords]
-        depth_test_result_madian = depth_test(median)
+        # depth_test_result_coords = {i: depth_test(v)
+        #                             for i, v in vert_coords.items()}
+        depth_test_result_coords = {}
+        for i, v in vert_coords.items():
+            orig = verts[i][1]
+            if orig == ORIGINDEX_NONE:
+                depth_test_result_coords[i] = 0
+            else:
+                depth_test_result_coords[i] = depth_test(v)
+
+        depth_test_result_madians = {}
+        for i, vec in face_center_coords.items():
+            if prefs.face_emphasis == 'FILL':
+                depth_test_result_madians[i] = 0
+            else:
+                depth_test_result_madians[i] = depth_test(vec)
 
         mesh_select_mode = context.tool_settings.mesh_select_mode
-        if prefs.draw_set == 'AUTO':
-            draw_vert = mesh_select_mode[0]
-            draw_edge = mesh_select_mode[1]
-            draw_face = mesh_select_mode[2]
+        if faces:
+            draw_vert = 'VERT' in prefs.draw_set_face
+            draw_edge = 'EDGE' in prefs.draw_set_face
+            draw_face = 'FACE' in prefs.draw_set_face
+        elif edges:
+            draw_vert = 'VERT' in prefs.draw_set_edge
+            draw_edge = 'EDGE' in prefs.draw_set_edge
+            draw_face = False
         else:
-            draw_vert = draw_edge = draw_face = False
-            if target_type == bmesh.types.BMVert:
-                draw_vert = 'VERT' in prefs.draw_set_vert
-            elif target_type == bmesh.types.BMEdge:
-                draw_vert = 'VERT' in prefs.draw_set_edge
-                draw_edge = 'EDGE' in prefs.draw_set_edge
-            else:
-                draw_vert = 'VERT' in prefs.draw_set_face
-                draw_edge = 'EDGE' in prefs.draw_set_face
-                draw_face = 'FACE' in prefs.draw_set_face
+            draw_vert = 'VERT' in prefs.draw_set_vert
+            draw_edge = False
+            draw_face = False
 
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         if mask == 'STENCIL':
@@ -1536,13 +2022,14 @@ def draw_callback(cls, context):
                 bgl.glColorMask(0, 0, 0, 0)
                 bgl.glPointSize(v_size)
                 bgl.glBegin(bgl.GL_POINTS)
-                for i, vec in enumerate(coords):
-                    if not use_depth or depth_test_result_coords[i] == 1:
-                        if use_depth:
-                            bgl.glVertex3f(*vec)
-                        else:
-                            v = project(region, rv3d, vec)
-                            bgl.glVertex3f(v[0], v[1], OVERLAY_MASK_Z)
+                for i, vec in vert_coords.items():
+                    if verts[i][1] is not None:
+                        if not use_depth or depth_test_result_coords[i] == 1:
+                            if use_depth:
+                                bgl.glVertex3f(*vec)
+                            else:
+                                v = project(region, rv3d, vec)
+                                bgl.glVertex3f(v[0], v[1], OVERLAY_MASK_Z)
                 bgl.glEnd()
                 if use_depth:
                     ED_view3d_polygon_offset(rv3d, 0.0)
@@ -1556,86 +2043,31 @@ def draw_callback(cls, context):
         bgl.glStencilOp(bgl.GL_KEEP, bgl.GL_KEEP, bgl.GL_KEEP)
 
         # 面描画
-        if target_type == bmesh.types.BMFace and draw_face:
+        if faces and draw_face:
             # パターンを使って塗りつぶし
-            if prefs.face_draw_type == 'DOT':
+            if prefs.face_emphasis == 'FILL':
                 dot_size = 2 ** (prefs.face_stipple - 1)
-                if len(coords_local) == 3:
-                    tris = [(0, 1, 2)]
-                elif len(coords_local) == 4:
-                    tris = [(0, 1, 2), (0, 2, 3)]
-                else:
-                    tris = mathutils.geometry.tessellate_polygon(
-                            [coords_local])
-
                 setpolygontone(True, dot_size)
-                if use_depth:
-                    ED_view3d_polygon_offset(rv3d, 1.0)
-                    bgl.glBegin(bgl.GL_TRIANGLES)
-                    for tri in tris:
-                        for i in tri:
-                            v = mat * coords_local[i]
-                            bgl.glVertex3f(*v)
-                    bgl.glEnd()
-                    ED_view3d_polygon_offset(rv3d, 0.0)
-                else:
-                    with glsettings.region_pixel_space():
-                        bgl.glBegin(bgl.GL_TRIANGLES)
-                        for tri in tris:
-                            for i in tri:
-                                vec = mat * coords_local[i]
-                                v = project(region, rv3d, vec)
-                                bgl.glVertex3f(v[0], v[1], OVERLAY_DRAW_Z)
-                        bgl.glEnd()
+                draw_faces('FILL')
                 setpolygontone(False)
-
             # Medianの位置に四角を描く
             else:
-                if prefs.face_center_size and prefs.face_center_line_width:
-                    with glsettings.region_pixel_space():
-                        bgl.glLineWidth(prefs.face_center_line_width)
-                        if not use_depth or depth_test_result_madian:
-                            r2 = prefs.face_center_size / 2
-                            v = project(region, rv3d, median)
-                            draw_box(v[0] - r2, v[1] - r2, r2 * 2, r2 * 2,
-                                     OVERLAY_DRAW_Z)
-                        bgl.glLineWidth(1)
+                bgl.glLineWidth(prefs.face_center_line_width)
+                draw_faces('CENTER')
+                bgl.glLineWidth(1)
 
         # 辺描画
-        if target_type in {bmesh.types.BMEdge, bmesh.types.BMFace}:
-            if draw_edge:
-                bgl.glLineWidth(prefs.edge_line_width)
-                bgl.glEnable(bgl.GL_LINE_SMOOTH)
-                setlinestyle(prefs.edge_line_stipple)
-                if target_type == bmesh.types.BMEdge:
-                    mode = bgl.GL_LINES
-                else:
-                    mode = bgl.GL_LINE_LOOP
-                if use_depth:
-                    if solid_object:
-                        # 辺が1.0で描画されている為（たぶん）、
-                        # すこしずらなさいと重なってしまう
-                        ED_view3d_polygon_offset(rv3d, POLYGON_OFFSET_EDGE)
-                    else:
-                        ED_view3d_polygon_offset(rv3d, 1.0)
-                    bgl.glBegin(mode)
-                    for vec in coords:
-                        bgl.glVertex3f(*vec)
-                    bgl.glEnd()
-                    ED_view3d_polygon_offset(rv3d, 0.0)
-                else:
-                    with glsettings.region_pixel_space():
-                        bgl.glBegin(mode)
-                        for vec in coords:
-                            v = project(region, rv3d, vec)
-                            bgl.glVertex3f(v[0], v[1], OVERLAY_DRAW_Z)
-                        bgl.glEnd()
-                bgl.glDisable(bgl.GL_LINE_SMOOTH)
-                bgl.glLineWidth(1)
-                setlinestyle(0)
+        if edges and draw_edge:
+            bgl.glLineWidth(prefs.edge_line_width)
+            bgl.glEnable(bgl.GL_LINE_SMOOTH)
+            setlinestyle(prefs.edge_line_stipple)
+            draw_edges()
+            bgl.glDisable(bgl.GL_LINE_SMOOTH)
+            bgl.glLineWidth(1)
+            setlinestyle(0)
 
         # 頂点描画。頂点の中心が隠れていると描画しない
-        if draw_vert:
+        if verts and draw_vert:
             bgl.glDisable(bgl.GL_STENCIL_TEST)
             bgl.glLineWidth(prefs.vertex_line_width)
             bgl.glEnable(bgl.GL_LINE_SMOOTH)
@@ -1646,7 +2078,10 @@ def draw_callback(cls, context):
             else:
                 pmat = rv3d.perspective_matrix
             with glsettings.region_pixel_space():
-                for i, vec in enumerate(coords):
+                for i, (_vec, orig) in verts.items():
+                    if orig == ORIGINDEX_NONE:
+                        continue
+                    vec = vert_coords[i]
                     if not use_depth or depth_test_result_coords[i] != 0:
                         v = project_v3(region.width, region.height, pmat, vec)
                         if use_depth and depth_test_result_coords[i] == -1:
@@ -1673,49 +2108,18 @@ def draw_callback(cls, context):
             bgl.glDisable(bgl.GL_DEPTH_TEST)
         bgl.glColor4f(*prefs.loop_select_color)
 
-        cm = glsettings.region_view3d_space().enter()
-
-        active, edge_coords, face_coords = targets
-
-        if face_coords:
-            if use_depth:
-                ED_view3d_polygon_offset(rv3d, 1.0)
+        if faces:
             dot_size = 2 ** (prefs.loop_select_face_stipple - 1)
             setpolygontone(True, dot_size)
-            bgl.glBegin(bgl.GL_TRIANGLES)
-            for v_coords in face_coords:
-                if len(v_coords) == 3:
-                    tris = [(0, 1, 2)]
-                elif len(v_coords) == 4:
-                    tris = [(0, 1, 2), (0, 2, 3)]
-                else:
-                    tris = mathutils.geometry.tessellate_polygon(
-                            [v_coords])
-                for tri in tris:
-                    for i in tri:
-                        v = mat * v_coords[i]
-                        bgl.glVertex3f(*v)
-            bgl.glEnd()
+            draw_faces('FILL')
             setpolygontone(False)
-            if use_depth:
-                ED_view3d_polygon_offset(rv3d, 0.0)
 
-        elif edge_coords:
-            if use_depth:
-                ED_view3d_polygon_offset(rv3d, 1.0)
+        elif edges:
             bgl.glLineWidth(prefs.loop_select_line_width)
             setlinestyle(prefs.loop_select_line_stipple)
-            bgl.glBegin(bgl.GL_LINES)
-            for v_coords in edge_coords:
-                for vec in v_coords:
-                    bgl.glVertex3f(*(mat * vec))
-            bgl.glEnd()
+            draw_edges()
             setlinestyle(0)
             bgl.glLineWidth(1)
-            if use_depth:
-                ED_view3d_polygon_offset(rv3d, 0.0)
-
-        cm.exit()
 
     glsettings.pop()
     glsettings.font_size()
@@ -1773,6 +2177,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         :type context: bpy.types.Context
         :type event: bpy.types.Event
         """
+
         self.remove_invalid_windows()
 
         win = context.window
@@ -1800,9 +2205,10 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         mco_prev = data.get('mco')
         data['mco'] = mco
         data['target'] = None
-        data['loop_targets'] = None
 
-        if event.type in {'INBETWEEN_MOUSEMOVE', 'TIMER'}:
+        if event.type == 'INBETWEEN_MOUSEMOVE':
+            return {'PASS_THROUGH'}
+        elif event.type.startswith('TIMER'):
             return {'PASS_THROUGH'}
         elif event.type == 'MOUSEMOVE':
             if mco == mco_prev:
@@ -1839,7 +2245,17 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         if v3d.viewport_shade == 'RENDERED':  # TODO: 他のview用に求めるか？
             return {'PASS_THROUGH'}
 
-        bm = bmesh.from_edit_mesh(context.active_object.data)
+        mesh = context.active_object.data
+        bm = bmesh.from_edit_mesh(mesh)
+        mesh_select_mode = context.tool_settings.mesh_select_mode
+        # スクリプト等でtool_settings.mesh_select_modeとbm.select_modeが
+        # 一致しない状態になる場合がある為、揃える
+        bm_select_mode = set()
+        for i, val in enumerate(mesh_select_mode):
+            if val:
+                bm_select_mode.add(['VERT', 'EDGE', 'FACE'][i])
+        bm.select_mode = bm_select_mode
+
         context_dict = context.copy()
         context_dict.update({'area': area, 'region': region})
         mco_region = [mco[0] - region.x, mco[1] - region.y]
@@ -1884,8 +2300,10 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                     if kmi.type == 'SELECTMOUSE':
                         if (kmi.shift == shift and kmi.ctrl == ctrl and
                                 kmi.alt == alt and kmi.oskey == oskey):
-                            mode = 'loop'
                             ring = kmi.properties.ring
+                            if mesh_select_mode[2]:
+                                ring = True
+                            mode = 'ring' if ring else 'loop'
                             toggle = kmi.properties.toggle
                             break
 
@@ -1896,92 +2314,106 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         scene_post = list(bpy.app.handlers.scene_update_post)
         bpy.app.handlers.scene_update_post.clear()
 
-        use_ctypes = test_platform() and prefs.use_ctypes
+        use_internal = test_platform() and prefs.use_internal
         if mode == 'select':
-            if use_ctypes:
-                elem = find_nearest_ctypes(context, context_dict, bm,
-                                           mco_region)
+            if use_internal:
+                elem = find_nearest_ctypes(
+                        context, context_dict, bm, mco_region)
             else:
                 elem = find_nearest(context, context_dict, bm, mco_region)
-            if elem:
-                if isinstance(elem, bmesh.types.BMVert):
-                    coords = [elem.co.copy()]
-                    median = elem.co.copy()
-                else:
-                    coords = [v.co.copy() for v in elem.verts]
-                    if isinstance(elem, bmesh.types.BMEdge):
-                        median = (coords[0] + coords[1]) / 2
-                    else:
-                        median = elem.calc_center_median()
-                data['target'] = [type(elem), coords, median]
-
+            elems = [elem] if elem else []
         elif prefs.use_loop_select:
-            if use_ctypes:
-                active, edge_coords, face_coords = find_loop_selection_ctypes(
+            if use_internal:
+                edge, elems = find_loop_selection_ctypes(
                         context, context_dict, bm, mco_region, ring, toggle)
             else:
-                active, edge_coords, face_coords = find_loop_selection(
+                edge, elems = find_loop_selection(
                         context, context_dict, bm, mco_region, ring, toggle)
-            if edge_coords or face_coords:
-                data['loop_targets'] = [repr(active), edge_coords, face_coords]
+        else:
+            elems = []
 
         bpy.app.handlers.scene_update_pre[:] = scene_pre
         bpy.app.handlers.scene_update_post[:] = scene_post
 
-        # 再描画
-        if data['target'] or data['loop_targets']:
-            updated_areas = set()
-            for sa in context.window.screen.areas:
-                if sa.type != 'VIEW_3D':
-                    continue
-                space_data = sa.spaces.active
-                """:type: bpy.types.SpaceView3D"""
-                prop = space_prop.get(space_data)
-                if (not prop.enable or
-                        space_data.viewport_shade == 'RENDERED'):
-                    continue
-                key = space_data.region_3d.as_pointer()
+        updated_areas = set()
+        for sa in context.window.screen.areas:
+            if sa.type != 'VIEW_3D':
+                continue
+            space_data = sa.spaces.active
+            """:type: bpy.types.SpaceView3D"""
+            prop = space_prop.get(space_data)
+            if (not prop.enable or
+                    space_data.viewport_shade == 'RENDERED'):
+                continue
+            key = space_data.region_3d.as_pointer()
+            count = data['callback_count'].get(key)
+            if count is not None:
+                if count > 1:
+                    updated_areas.add(sa)
+            data['callback_count'][key] = 0
+            for rv3d_ in space_data.region_quadviews:
+                key = rv3d_.as_pointer()
                 count = data['callback_count'].get(key)
                 if count is not None:
                     if count > 1:
                         updated_areas.add(sa)
                 data['callback_count'][key] = 0
-                for rv3d_ in space_data.region_quadviews:
-                    key = rv3d_.as_pointer()
-                    count = data['callback_count'].get(key)
-                    if count is not None:
-                        if count > 1:
-                            updated_areas.add(sa)
-                    data['callback_count'][key] = 0
-            redraw = False
-            if updated_areas:
-                redraw = True
-            elif data['target'] != data['target_prev']:
-                redraw = True
-            elif not data['loop_targets_prev']:
-                redraw = True
-            else:
-                active_prev, edges_prev, faces_prev = \
-                    data['loop_targets_prev']
-                if (active_prev != repr(active) or
-                        len(edges_prev) != len(edge_coords) or
-                        len(faces_prev) != len(face_coords)):
-                    redraw = True
-            if redraw:
-                if prefs.redraw_all:
-                    redraw_areas(context)
-                else:
-                    area.tag_redraw()
-        else:
-            if self.fond_area_prev:
-                self.fond_area_prev.tag_redraw()
 
+        do_dm_cache_updated = False
+        if elems:
+            if prefs.use_derived_mesh and data['do_dm_cache_update']:
+                if mesh.as_pointer() in dm_cache:
+                    del dm_cache[mesh.as_pointer()]
+                data['do_dm_cache_update'] = False
+                do_dm_cache_updated = True
+            # index_update()はほぼ無視できる処理時間。10万ポリで1e-5以下
+            bm.verts.index_update()
+            bm.edges.index_update()
+            bm.faces.index_update()
+
+            require_face_centers = prefs.face_emphasis == 'CENTER'
+            if prefs.use_derived_mesh:
+                verts, edges, faces, centers = get_dm_elems(
+                        mesh, bm, elems, require_face_centers)
+            else:
+                verts, edges, faces, centers = get_bmdm_elems(
+                        mesh, bm, elems, require_face_centers)
+            key = (mode, tuple([repr(ele) for ele in elems]))
+            dm_type = get_dm(mesh).type
+            data['target'] = [key, mode, dm_type, verts, edges, faces,
+                              centers]
+
+        data['object_is_updated'] = False
+
+        # 再描画
+        redraw = False
+        if updated_areas:
+            redraw = True
+        elif (data['target'] and not data['target_prev'] or
+                not data['target'] and data['target_prev']):
+            redraw = True
+        elif data['target']:
+            if data['target_prev'][0] != data['target'][0]:
+                redraw = True
+            elif do_dm_cache_updated:
+                redraw = True
+        if redraw:
+            if prefs.redraw_all:
+                redraw_areas(context)
+            else:
+                area.tag_redraw()
+        # Areaが切り替わったら前のAreaを再描画
+        addr = data['area_prev']
+        if addr and addr != area.as_pointer():
+            for sa in context.screen.areas:
+                if sa.as_pointer() == addr:
+                    sa.tag_redraw()
+                    break
+
+        dm = get_dm(mesh)
+        data['dm_address'] = addressof(dm) if dm else None
         data['target_prev'] = data['target']
-        data['loop_targets_prev'] = data['loop_targets']
-        if data['target'] or data['loop_targets']:
-            self.fond_area_prev = area
-        else:
-            self.fond_area_prev = None
+        data['area_prev'] = area.as_pointer()
 
         return {'PASS_THROUGH'}
 
@@ -2010,18 +2442,19 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         else:
             if win.as_pointer() in self.data:
                 return {'FINISHED'}
-            self.data[win.as_pointer()] = d = {}
-            d['event'] = event
-            d['target'] = None
-            d['target_prev'] = None
-            d['loop_targets'] = None
-            d['loop_targets_prev'] = None
-            d['callback_count'] = {}
+            self.data[win.as_pointer()] = data = {}
+            data['event'] = event
+            data['target'] = None
+            data['target_prev'] = None
+            data['callback_count'] = {}  # 視点変更等で再描画されるとカウント
+            data['object_is_updated'] = False
+            data['do_dm_cache_update'] = True
+            data['dm_address'] = 0
+            data['area_prev'] = None
             if not self.handle:
                 self.__class__.handle = bpy.types.SpaceView3D.draw_handler_add(
                     draw_callback, (self.__class__, context,), 'WINDOW',
                         'POST_VIEW')
-            self.fond_area_prev = False
             context.window_manager.modal_handler_add(self)
 
             return {'RUNNING_MODAL'}
@@ -2056,12 +2489,34 @@ def scene_update_pre(scene):
         return
     if bpy.context.region:
         return
+
+    cls = VIEW3D_OT_draw_nearest_element
+
+    if bpy.context.mode == 'EDIT_MESH':
+        data = cls.active(win)
+        if data:
+            ob = bpy.context.object
+            dm_updated = False
+            dm_key = None
+            prefs = DrawNearestPreferences.get_prefs()
+            if prefs.use_derived_mesh:
+                dm = get_dm(ob.data)
+                dm_key = addressof(dm) if dm else None
+                dm_updated = dm_key != data['dm_address']
+
+            if (ob.is_updated or ob.is_updated_data or
+                    ob.data.is_updated or ob.data.is_updated_data or
+                    dm_updated):
+                data['object_is_updated'] = True
+                data['do_dm_cache_update'] = True
+                data['dm_address'] = dm_key
+
     for area in win.screen.areas:
         if area.type == 'VIEW_3D':
             v3d = area.spaces.active
             p = space_prop.get(v3d)
             if p.enable:
-                if not VIEW3D_OT_draw_nearest_element.active(win):
+                if not cls.active(win):
                     c = bpy.context.copy()
                     c['area'] = area
                     c['region'] = area.regions[-1]
@@ -2079,6 +2534,7 @@ def scene_update_pre(scene):
 def load_pre(dummy):
     # オブジェクトは開放しておかないとアドレスが再利用された場合に不具合になる
     VIEW3D_OT_draw_nearest_element.unregister()
+    dm_cache.clear()
 
 
 classes = [
