@@ -204,7 +204,7 @@ class DrawNearestPreferences(
     )
     use_internal = bpy.props.BoolProperty(
         name='Internal Functions',
-        description='Faster. (linux only)',
+        description='Faster (linux only)',
         default=False,
     )
     use_derived_mesh = bpy.props.BoolProperty(
@@ -2503,27 +2503,25 @@ def scene_update_pre(scene):
         if data:
             ob = bpy.context.object
             dm_updated = False
-            dm_key = None
-            dm_num_elems = None
+            dm_address = None
+            dm_num_elems = [-1, -1, -1, -1]
             prefs = DrawNearestPreferences.get_prefs()
             if prefs.use_derived_mesh:
                 dm = get_dm(ob.data)
-                dm_key = addressof(dm) if dm else None
-                dm_updated = not (dm and dm_key == data['dm_address'])
-                if not dm_updated:
-                    dm_p = pointer(dm)
-                    dm_num_elems = [dm.getNumVerts(dm_p),
-                                    dm.getNumEdges(dm_p),
-                                    dm.getNumPolys(dm_p),
-                                    dm.getNumLoops(dm_p)]
-                    if dm_num_elems != data['dm_num_elems']:
-                        dm_updated = True
+                dm_address = addressof(dm) if dm else None
+                dm_p = pointer(dm)
+                dm_num_elems = [dm.getNumVerts(dm_p),
+                                dm.getNumEdges(dm_p),
+                                dm.getNumPolys(dm_p),
+                                dm.getNumLoops(dm_p)]
+                dm_updated = not (dm and dm_address == data['dm_address'] and
+                                  dm_num_elems == data['dm_num_elems'])
             if (ob.is_updated or ob.is_updated_data or
                     ob.data.is_updated or ob.data.is_updated_data or
                     dm_updated):
                 data['object_is_updated'] = True
                 data['do_dm_cache_update'] = True
-                data['dm_address'] = dm_key
+                data['dm_address'] = dm_address
                 data['dm_num_elems'] = dm_num_elems
 
     for area in win.screen.areas:
