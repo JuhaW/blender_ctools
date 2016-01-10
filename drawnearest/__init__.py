@@ -40,6 +40,7 @@ import functools
 import inspect
 import collections
 import enum
+import time
 
 import bpy
 import bmesh
@@ -1280,62 +1281,62 @@ def get_dm_attr(mesh, dm, attr):
     if attr == 'type':
         value = dm.type
 
-    elif attr == 'vert_num':
+    elif attr == 'num_verts':
         value = dm.getNumVerts(dm_p)
-    elif attr == 'edge_num':
+    elif attr == 'num_edges':
         value = dm.getNumEdges(dm_p)
-    elif attr == 'face_num':
+    elif attr == 'num_faces':
         value = dm.getNumPolys(dm_p)
-    elif attr == 'loop_num':
+    elif attr == 'num_loops':
         value = dm.getNumLoops(dm_p)
 
     elif attr == 'vert_coords':
-        value = (c_float * 3 * get_dm_attr(mesh, dm, 'vert_num'))()
+        value = (c_float * 3 * get_dm_attr(mesh, dm, 'num_verts'))()
         dm.getVertCos(dm_p, value)
 
     elif attr == 'vert_array':
-        value = (MVert * get_dm_attr(mesh, dm, 'vert_num'))()
+        value = (MVert * get_dm_attr(mesh, dm, 'num_verts'))()
         dm.copyVertArray(dm_p, value)
     elif attr == 'edge_array':
-        value = (MEdge * get_dm_attr(mesh, dm, 'edge_num'))()
+        value = (MEdge * get_dm_attr(mesh, dm, 'num_edges'))()
         dm.copyEdgeArray(dm_p, value)
     elif attr == 'face_array':
-        value = (MPoly * get_dm_attr(mesh, dm, 'face_num'))()
+        value = (MPoly * get_dm_attr(mesh, dm, 'num_faces'))()
         dm.copyPolyArray(dm_p, value)
     elif attr == 'loop_array':
-        value = (MLoop * get_dm_attr(mesh, dm, 'loop_num'))()
+        value = (MLoop * get_dm_attr(mesh, dm, 'num_loops'))()
         dm.copyLoopArray(dm_p, value)
 
     elif attr == 'vert_origindex_array':
-        vert_num = get_dm_attr(mesh, dm, 'vert_num')
+        num_verts = get_dm_attr(mesh, dm, 'num_verts')
         if dm.type == DerivedMeshType.DM_TYPE_EDITBMESH:
-            value = (c_int * vert_num)(*range(vert_num))
+            value = (c_int * num_verts)(*range(num_verts))
         else:
             arr = dm.getVertDataArray(dm_p, CustomDataType.CD_ORIGINDEX)
             if arr:
-                value = (c_int * vert_num)()
+                value = (c_int * num_verts)()
                 ctypes.memmove(value, arr, sizeof(value))
             else:
                 value = None
     elif attr == 'edge_origindex_array':
-        edge_num = get_dm_attr(mesh, dm, 'edge_num')
+        num_edges = get_dm_attr(mesh, dm, 'num_edges')
         if dm.type == DerivedMeshType.DM_TYPE_EDITBMESH:
-            value = (c_int * edge_num)(*range(edge_num))
+            value = (c_int * num_edges)(*range(num_edges))
         else:
             arr = dm.getEdgeDataArray(dm_p, CustomDataType.CD_ORIGINDEX)
             if arr:
-                value = (c_int * edge_num)()
+                value = (c_int * num_edges)()
                 ctypes.memmove(value, arr, sizeof(value))
             else:
                 value = None
     elif attr == 'face_origindex_array':
-        face_num = get_dm_attr(mesh, dm, 'face_num')
+        num_faces = get_dm_attr(mesh, dm, 'num_faces')
         if dm.type == DerivedMeshType.DM_TYPE_EDITBMESH:
-            value = (c_int * face_num)(*range(face_num))
+            value = (c_int * num_faces)(*range(num_faces))
         else:
             arr = dm.getPolyDataArray(dm_p, CustomDataType.CD_ORIGINDEX)
             if arr:
-                value = (c_int * face_num)()
+                value = (c_int * num_faces)()
                 ctypes.memmove(value, arr, sizeof(value))
             else:
                 value = None
@@ -2412,6 +2413,10 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 
         dm = get_dm(mesh)
         data['dm_address'] = addressof(dm) if dm else None
+        data['dm_num_elems'] = [get_dm_attr(mesh, dm, 'num_verts'),
+                                get_dm_attr(mesh, dm, 'num_edges'),
+                                get_dm_attr(mesh, dm, 'num_faces'),
+                                get_dm_attr(mesh, dm, 'num_loops'),]
         data['target_prev'] = data['target']
         data['area_prev'] = area.as_pointer()
 
@@ -2449,7 +2454,8 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             data['callback_count'] = {}  # 視点変更等で再描画されるとカウント
             data['object_is_updated'] = False
             data['do_dm_cache_update'] = True
-            data['dm_address'] = 0
+            data['dm_address'] = None
+            data['dm_num_elems'] = [-1, -1, -1, -1]
             data['area_prev'] = None
             if not self.handle:
                 self.__class__.handle = bpy.types.SpaceView3D.draw_handler_add(
@@ -2498,18 +2504,27 @@ def scene_update_pre(scene):
             ob = bpy.context.object
             dm_updated = False
             dm_key = None
+            dm_num_elems = None
             prefs = DrawNearestPreferences.get_prefs()
             if prefs.use_derived_mesh:
                 dm = get_dm(ob.data)
                 dm_key = addressof(dm) if dm else None
-                dm_updated = dm_key != data['dm_address']
-
+                dm_updated = not (dm and dm_key == data['dm_address'])
+                if not dm_updated:
+                    dm_p = pointer(dm)
+                    dm_num_elems = [dm.getNumVerts(dm_p),
+                                    dm.getNumEdges(dm_p),
+                                    dm.getNumPolys(dm_p),
+                                    dm.getNumLoops(dm_p)]
+                    if dm_num_elems != data['dm_num_elems']:
+                        dm_updated = True
             if (ob.is_updated or ob.is_updated_data or
                     ob.data.is_updated or ob.data.is_updated_data or
                     dm_updated):
                 data['object_is_updated'] = True
                 data['do_dm_cache_update'] = True
                 data['dm_address'] = dm_key
+                data['dm_num_elems'] = dm_num_elems
 
     for area in win.screen.areas:
         if area.type == 'VIEW_3D':
