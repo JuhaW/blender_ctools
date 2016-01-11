@@ -1414,7 +1414,6 @@ def get_bmdm_elems(mesh, bm, elems, require_face_centers, use_derived=True):
             dm.getVertCo(dm, i, co)
             dm_vert_elems[i] = (Vector(co), i)
     else:
-        print('EEee')
         for elem in verts:
             i = elem.index
             dm_vert_elems[i] = (elem.co.copy(), i)
