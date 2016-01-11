@@ -267,7 +267,7 @@ for mod in sub_modules:
 
     prop = bpy.props.BoolProperty(
         name=info['name'],
-        description=info.get('description', ''),
+        description=info.get('description', '').rstrip('.'),
         update=gen_update(mod),
     )
     setattr(CToolsPreferences, 'use_' + mod_name, prop)
