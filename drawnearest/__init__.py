@@ -1380,7 +1380,7 @@ def get_dm_attr(mesh, dm, attr):
     return value
 
 
-def get_bmdm_elems(mesh, bm, elems, require_face_centers):
+def get_bmdm_elems(mesh, bm, elems, require_face_centers, use_derived=True):
     dm_vert_elems = {}
     dm_edge_elems = {}
     dm_face_elems = {}
@@ -1403,7 +1403,10 @@ def get_bmdm_elems(mesh, bm, elems, require_face_centers):
             for e in elem.edges:
                 edges.add(e)
 
-    dm = get_dm(mesh)
+    if use_derived:
+        dm = get_dm(mesh)
+    else:
+        dm = None
     if dm:
         co = (c_float * 3)()
         for elem in verts:
@@ -2375,7 +2378,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                         mesh, bm, elems, require_face_centers)
             else:
                 verts, edges, faces, centers = get_bmdm_elems(
-                        mesh, bm, elems, require_face_centers)
+                        mesh, bm, elems, require_face_centers, False)
             elems_key = []
             for ele in elems:
                 if isinstance(ele, bmesh.types.BMVert):
