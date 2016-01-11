@@ -1163,7 +1163,7 @@ DerivedMesh._fields_ = fields(
 
     # * Get vertex location, undefined if index is not valid
     # void (*getVertCo)(DerivedMesh *dm, int index, float r_co[3]);
-    c_void_p, 'getVertCo',
+    CFUNCTYPE(c_int, POINTER(DerivedMesh), c_int, c_void_p), 'getVertCo',
 
     # * Fill the array (of length .getNumVerts()) with all vertex locations
     # void (*getVertCos)(DerivedMesh *dm, float (*r_cos)[3]);

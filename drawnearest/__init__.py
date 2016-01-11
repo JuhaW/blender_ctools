@@ -1380,9 +1380,7 @@ def get_dm_attr(mesh, dm, attr):
     return value
 
 
-def get_bmdm_elems(mesh, bm, elems, require_face_centers, vert_coords=None):
-    """Fallback"""
-    # FIXME
+def get_bmdm_elems(mesh, bm, elems, require_face_centers):
     dm_vert_elems = {}
     dm_edge_elems = {}
     dm_face_elems = {}
@@ -1405,10 +1403,13 @@ def get_bmdm_elems(mesh, bm, elems, require_face_centers, vert_coords=None):
             for e in elem.edges:
                 edges.add(e)
 
-    if vert_coords is not None:
+    dm = get_dm(mesh)
+    if dm:
+        co = (c_float * 3)()
         for elem in verts:
             i = elem.index
-            dm_vert_elems[i] = (Vector(vert_coords[i]), i)
+            dm.getVertCo(dm, i, co)
+            dm_vert_elems[i] = (Vector(co), i)
     else:
         for elem in verts:
             i = elem.index
@@ -1426,13 +1427,9 @@ def get_bmdm_elems(mesh, bm, elems, require_face_centers, vert_coords=None):
 
 def get_dm_elems(mesh, bm, elems, require_face_centers):
     dm = get_dm(mesh)
-    if not dm:
+    if (not dm or get_dm_attr(mesh, dm, 'type') ==
+            DerivedMeshType.DM_TYPE_EDITBMESH):
         return get_bmdm_elems(mesh, bm, elems, require_face_centers)
-
-    if get_dm_attr(mesh, dm, 'type') == DerivedMeshType.DM_TYPE_EDITBMESH:
-        vert_coords = get_dm_attr(mesh, dm, 'vert_coords')
-        return get_bmdm_elems(mesh, bm, elems, require_face_centers,
-                              vert_coords)
 
     elem_types = set((type(elem) for elem in elems))
     vert_coords = get_dm_attr(mesh, dm, 'vert_coords')
@@ -2379,7 +2376,13 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             else:
                 verts, edges, faces, centers = get_bmdm_elems(
                         mesh, bm, elems, require_face_centers)
-            key = (mode, tuple([repr(ele) for ele in elems]))
+            elems_key = []
+            for ele in elems:
+                if isinstance(ele, bmesh.types.BMVert):
+                    elems_key.append((repr(ele), tuple(ele.co)))
+                else:
+                    elems_key.append(repr(ele))
+            key = (mode, tuple(elems_key))
             dm_type = get_dm(mesh).type
             data['target'] = [key, mode, dm_type, verts, edges, faces,
                               centers]
@@ -2508,12 +2511,13 @@ def scene_update_pre(scene):
             prefs = DrawNearestPreferences.get_prefs()
             if prefs.use_derived_mesh:
                 dm = get_dm(ob.data)
-                dm_address = addressof(dm) if dm else None
-                dm_p = pointer(dm)
-                dm_num_elems = [dm.getNumVerts(dm_p),
-                                dm.getNumEdges(dm_p),
-                                dm.getNumPolys(dm_p),
-                                dm.getNumLoops(dm_p)]
+                if dm:
+                    dm_address = addressof(dm)
+                    dm_p = pointer(dm)
+                    dm_num_elems = [dm.getNumVerts(dm_p),
+                                    dm.getNumEdges(dm_p),
+                                    dm.getNumPolys(dm_p),
+                                    dm.getNumLoops(dm_p)]
                 dm_updated = not (dm and dm_address == data['dm_address'] and
                                   dm_num_elems == data['dm_num_elems'])
             if (ob.is_updated or ob.is_updated_data or
