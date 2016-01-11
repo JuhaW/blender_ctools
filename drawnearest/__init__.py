@@ -1414,6 +1414,7 @@ def get_bmdm_elems(mesh, bm, elems, require_face_centers, use_derived=True):
             dm.getVertCo(dm, i, co)
             dm_vert_elems[i] = (Vector(co), i)
     else:
+        print('EEee')
         for elem in verts:
             i = elem.index
             dm_vert_elems[i] = (elem.co.copy(), i)
@@ -1423,7 +1424,12 @@ def get_bmdm_elems(mesh, bm, elems, require_face_centers, use_derived=True):
     for elem in faces:
         i = elem.index
         dm_face_elems[i] = ([v.index for v in elem.verts], i)
-        dm_face_center_elems[i] = (elem.calc_center_median(), i)
+        if dm:
+            coords = [dm_vert_elems[v.index][0] for v in elem.verts]
+            center = sum(coords, Vector()) / len(coords)
+        else:
+            center = elem.calc_center_median()
+        dm_face_center_elems[i] = (center, i)
 
     return dm_vert_elems, dm_edge_elems, dm_face_elems, dm_face_center_elems
 
