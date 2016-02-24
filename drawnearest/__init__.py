@@ -1044,6 +1044,7 @@ def get_selected(bm):
 def find_nearest(context, context_dict, bm, mco_region):
     select_history = list(bm.select_history)
     active_face = bm.faces.active
+    active_material_index = context.active_object.active_material_index
 
     selected_verts, selected_edges, selected_faces = get_selected(bm)
 
@@ -1138,6 +1139,7 @@ def find_nearest(context, context_dict, bm, mco_region):
     for elem in select_history:
         bm.select_history.add(elem)
     bm.faces.active = active_face
+    context.active_object.active_material_index = active_material_index
 
     return active
 
@@ -1161,6 +1163,7 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
 
     select_history = list(bm.select_history)
     active_face = bm.faces.active
+    active_material_index = context.active_object.active_material_index
 
     verts_pre, edges_pre, faces_pre = get_selected(bm)
 
@@ -1217,6 +1220,7 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
         for elem in select_history:
             bm.select_history.add(elem)
         bm.faces.active = active_face
+        context.active_object.active_material_index = active_material_index
 
     return active_edge, elems
 

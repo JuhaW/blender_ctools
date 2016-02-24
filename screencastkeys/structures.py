@@ -42,6 +42,11 @@ from ctypes import CDLL, Structure, POINTER, cast, \
     c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
     py_object, c_uint, c_int8, c_uint8, CFUNCTYPE
 
+import bpy
+
+
+version = bpy.app.version
+
 
 class c_void:
     pass
@@ -1180,7 +1185,21 @@ DerivedMesh._fields_ = fields(
 
 class ViewContext(Structure):
     """editors/include/ED_view3d.h"""
-    _fields_ = fields(
+
+if version[1] > 76 or version[1] == 76 and version[2] >= 11:
+    ViewContext._fields_ = fields(
+        c_void_p, 'scene',
+        c_void_p, 'obact',
+        c_void_p, 'obedit',
+        c_void_p, 'ar',
+        c_void_p, 'v3d',
+        c_void_p, 'win',
+        c_void_p, 'rv3d',
+        BMEditMesh, '*em',
+        c_int, 'mval[2]',
+    )
+else:
+    ViewContext._fields_ = fields(
         c_void_p, 'scene',
         c_void_p, 'obact',
         c_void_p, 'obedit',
