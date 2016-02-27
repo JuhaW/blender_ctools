@@ -332,7 +332,7 @@ def prop_from_struct(prop):
     else:
         attrs['default'] = prop.default
     if prop.type in ('BOOLEAN', 'INT', 'FLOAT', 'STRING'):
-        if prop.subtype == 'LAYER_MEMBERSHIP':  # 未対応
+        if prop.subtype == 'LAYER_MEMBER':  # 未対応
             attrs['subtype'] = 'LAYER'
         else:
             attrs['subtype'] = prop.subtype

@@ -398,6 +398,8 @@ def callback_scene_update_pre(scene):
         return
 
     prefs = UpdateTagPreferences.get_prefs()
+    if not prefs:
+        return
     if prefs.use_material:
         update_materials()
     if prefs.use_texture:
