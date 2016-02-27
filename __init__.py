@@ -48,9 +48,9 @@ bl_info = {
     'name': 'CTools',
     'author': 'chromoly',
     'version': (1, 1),
-    'blender': (2, 76, 0),
+    'blender': (2, 77, 0),
     'location': '',
-    'description': 'Addon Collection',
+    'description': 'Collection of add-ons',
     'warning': '',
     'wiki_url': 'https://github.com/chromoly/blender_ctools',
     'category': 'User Interface'
