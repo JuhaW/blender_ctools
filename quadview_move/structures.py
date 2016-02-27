@@ -38,9 +38,9 @@
 import re
 import platform
 import ctypes
-from ctypes import CDLL, Structure, POINTER, cast, \
+from ctypes import CDLL, Structure, Union, POINTER, cast, \
     c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
-    py_object, c_uint, c_int8, c_uint8, CFUNCTYPE
+    py_object, c_ssize_t, c_uint, c_int8, c_uint8, CFUNCTYPE
 
 import bpy
 
@@ -53,6 +53,7 @@ class c_void:
 
 
 def fields(*field_items):
+    """:rtype: list"""
     r_fields = []
 
     type = None
@@ -624,7 +625,7 @@ wmEventHandler._fields_ = fields(
 class wmWindow(Structure):
     """source/blender/makesdna/DNA_windowmanager_types.h: 175"""
 
-wmWindow._fields_ = fields(
+_fields = fields(
     wmWindow, '*next', '*prev',
 
     c_void_p, 'ghostwin',
@@ -641,8 +642,14 @@ wmWindow._fields_ = fields(
     c_short, 'lastcursor',
     c_short, 'modalcursor',
     c_short, 'grabcursor',  # GHOST_TGrabCursorMode
-    c_short, 'addmousemove',
-
+    c_short, 'addmousemove'
+)
+if bpy.app.version[:2] == (2, 77):
+    _fields.extend(fields(
+        c_short, 'multisamples',
+        c_short, 'pad[3]',
+    ))
+_fields.extend(fields(
     c_int, 'winid',
 
     # internal, lock pie creation from this event until released
@@ -670,7 +677,8 @@ wmWindow._fields_ = fields(
     ListBase, 'gesture',
 
     c_void_p, 'stereo3d_format',  # struct Stereo3dFormat
-)
+))
+wmWindow._fields_ = _fields
 
 
 class SpaceText(Structure):
@@ -1435,6 +1443,75 @@ def context_py_dict_set_linux(context, py_dict):
         # CTX_py_dict_set(C, py_object())
         CTX_py_dict_set(C, None)
     return context_dict_back
+
+
+###############################################################################
+class PyObject_HEAD(ctypes.Structure):
+    _fields_ = [
+        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
+        ('ob_refcnt', ctypes.c_ssize_t),
+        ('ob_type', ctypes.c_void_p),
+    ]
+
+
+class PyObject_VAR_HEAD(ctypes.Structure):
+    _fields_ = [
+        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
+        ('ob_refcnt', ctypes.c_ssize_t),
+        ('ob_type', ctypes.c_void_p),
+        ('ob_size', ctypes.c_ssize_t),
+    ]
+
+
+###############################################################################
+class _Buffer_buf(ctypes.Union):
+    _fields_ = [
+        ('*asbyte', ctypes.c_char),
+        ('*asshort', ctypes.c_short),
+        ('*asint', ctypes.c_int),
+        ('*asfloat', ctypes.c_float),
+        ('*asdouble', ctypes.c_double),
+
+        ('asvoid', ctypes.c_void_p),
+    ]
+
+
+class Buffer(ctypes.Structure):
+    _anonymous_ = ('_head',)
+    _fields_ = [
+        ('_head', PyObject_VAR_HEAD),
+        ('parent', ctypes.py_object),
+
+        ('type', ctypes.c_int),   # GL_BYTE, GL_SHORT, GL_INT, GL_FLOAT
+        ('ndimensions', ctypes.c_int),
+        ('dimensions', ctypes.POINTER(ctypes.c_int)),
+
+        ('buf', _Buffer_buf),
+    ]
+
+
+def buffer_to_ctypes(buf):
+    import ctypes as ct
+    c_buf_p = ct.cast(ct.c_void_p(id(buf)), ct.POINTER(Buffer))
+    c_buf = c_buf_p.contents
+    types = {
+        bgl.GL_BYTE: ct.c_byte,
+        bgl.GL_SHORT: ct.c_short,
+        bgl.GL_INT: ct.c_int,
+        bgl.GL_FLOAT: ct.c_float,
+        bgl.GL_DOUBLE: ct.c_double
+    }
+    t = types[c_buf.type]
+    n = c_buf.ndimensions
+    for i in range(n - 1, -1, -1):
+        t *= c_buf.dimensions[i]
+    ct_buf = ct.cast(c_buf.buf.asvoid, ct.POINTER(t)).contents
+    return ct_buf
+
+
+def buffer_to_ndarray(buf):
+    import numpy as np
+    return np.ctypeslib.as_array(buffer_to_ctypes(buf))
 
 
 ###############################################################################
