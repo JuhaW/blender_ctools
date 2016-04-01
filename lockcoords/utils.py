@@ -1010,11 +1010,6 @@ class AddonKeyMapUtility:
                 row = col.row()
                 row.label(text=km.name, icon='DOT')
 
-                row.label()
-                row.label()
-
-                row.label()
-
                 for kmi in filtered_items:
                     self.__draw_kmi(km, kmi, col, 1)
 
