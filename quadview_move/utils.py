@@ -351,26 +351,27 @@ class AddonKeyMapUtility:
 
         kc = bpy.context.window_manager.keyconfigs.addon
         if kc:
-            addon_prefs = ExampleAddonPreferences._kmu_get_instance()
-            km = addon_prefs.kmu_get_keymap('Screen')
+            addon_prefs = ExampleAddonPreferences.get_instance()
+            km = addon_prefs.get_keymap('Screen')
             kmi = km.keymap_items.new(
                 'wm.splash', 'ONE', 'PRESS', ctrl=True, alt=True)
             addon_keymaps.append((km, kmi))  # or addon_keymaps.append(kmi)
-            addon_prefs._kmu_register_keymap_items(addon_keymaps)
+            addon_prefs.register_keymap_items(addon_keymaps)
 
     def unregister():
-        addon_prefs = ExampleAddonPreferences._kmu_get_instance()
-        addon_prefs._kmu_unregister_keymap_items()
+        addon_prefs = ExampleAddonPreferences.get_instance()
+        addon_prefs.unregister_keymap_items()
 
         for cls in classes[::-1]:
             bpy.utils.unregister_class(cls)
 
     """
 
-    kmu_addon_keymaps = None
-    """:type: list"""
+    _ADDON_KEY_MAP_UTILITY_QUALNAME = __qualname__
+    _KMU_IDPROP_NAME = 'AddonKeyMapUtility_keymap_items'
 
-    _KMU_IDPROP_NAME = 'AddonKeyMapUtility_user_keymap_items'
+    addon_keymaps = None
+    """:type: list"""
 
     # custom property -----------------------------------------------
 
@@ -382,7 +383,7 @@ class AddonKeyMapUtility:
     def __show_keymaps_set(self, value):
         self.__class__.__show_keymaps = value
 
-    kmu_show_keymaps = bpy.props.BoolProperty(
+    show_addon_keymaps = bpy.props.BoolProperty(
         name='Show KeyMaps',
         get=__show_keymaps_get,
         set=__show_keymaps_set,
@@ -393,21 +394,57 @@ class AddonKeyMapUtility:
     __data = {'keymap_items': {}, 'default_values': {}}
 
     @property
-    def _kmu_keymap_items(self):
+    def __keymap_items(self):
         """[(km.name, kmi.id), ...]"""
         d = self.__data['keymap_items']
         return d.setdefault(self.as_pointer(), [])
 
     @property
-    def _kmu_default_values(self):
+    def __default_values(self):
         """[[km.name, attrs, props, ...]]"""
         d = self.__data['default_values']
         return d.setdefault(self.as_pointer(), [])
 
-    # static method -------------------------------------------------
+    # register / unregister -----------------------------------------
+
+    @classmethod
+    def register(cls):
+        """継承したクラスでもregisterを定義するなら、super関数を使って
+        このメソッドを呼ぶ。
+        super().register()
+        """
+        classes = [cls.__WM_OT_kmu_keymap_item_add,
+                   cls.__WM_OT_kmu_keymap_item_remove,
+                   cls.__WM_OT_kmu_keymaps_write,
+                   cls.__WM_OT_kmu_keymaps_restore,
+                   cls.__WM_MT_kmu_keymap_item_add,
+                   ]
+        for c in classes:
+            c.register_class()
+
+        c = super()
+        if hasattr(c, 'register'):
+            c.register()
+
+    @classmethod
+    def unregister(cls):
+        """注意事項はregisterと同じ"""
+
+        classes = [cls.__WM_OT_kmu_keymap_item_add,
+                   cls.__WM_OT_kmu_keymap_item_remove,
+                   cls.__WM_OT_kmu_keymaps_write,
+                   cls.__WM_OT_kmu_keymaps_restore,
+                   cls.__WM_MT_kmu_keymap_item_add,
+                   ]
+        for c in classes[::-1]:
+            c.unregister_class()
+
+        c = super()
+        if hasattr(c, 'unregister'):
+            c.unregister()
 
     @staticmethod
-    def _kmu_reversed_keymap_table():
+    def __reversed_keymap_table():
         kc = bpy.context.window_manager.keyconfigs.addon
         km_table = {}
         for km in kc.keymaps:
@@ -416,7 +453,7 @@ class AddonKeyMapUtility:
         return km_table
 
     @staticmethod
-    def kmu_get_keymap(name):
+    def __get_keymap(name):
         """KeyMaps.new()の結果を返す。name以外の引数は勝手に補完してくれる。
         :type name: str
         :rtype: bpy.types.KeyMap
@@ -458,48 +495,8 @@ class AddonKeyMapUtility:
             raise ValueError(msg)
         return km
 
-    # register / unregister -----------------------------------------
-
     @classmethod
-    def register(cls):
-        """継承したクラスでもregisterを定義するなら、super関数を使って
-        このメソッドを呼ぶ。
-        super().register()
-        """
-        classes = [
-            cls.__WM_OT_kmu_keymap_item_add,
-            cls.__WM_OT_kmu_keymap_item_remove,
-            cls.__WM_OT_kmu_keymaps_write,
-            cls.__WM_OT_kmu_keymaps_restore,
-            cls.__WM_MT_kmu_keymap_item_add,
-        ]
-        for c in classes:
-            c.register_class()
-
-        c = super()
-        if hasattr(c, 'register'):
-            c.register()
-
-    @classmethod
-    def unregister(cls):
-        """注意事項はregisterと同じ"""
-
-        classes = [
-            cls.__WM_OT_kmu_keymap_item_add,
-            cls.__WM_OT_kmu_keymap_item_remove,
-            cls.__WM_OT_kmu_keymaps_write,
-            cls.__WM_OT_kmu_keymaps_restore,
-            cls.__WM_MT_kmu_keymap_item_add,
-        ]
-        for c in classes[::-1]:
-            c.unregister_class()
-
-        c = super()
-        if hasattr(c, 'unregister'):
-            c.unregister()
-
-    @classmethod
-    def _kmu_get_instance(cls, package=''):
+    def __get_instance(cls, package=''):
         name = cls.bl_idname
         if name == 'ctools' or name.startswith('ctools.'):
             return cls.get_prefs(package)
@@ -513,17 +510,17 @@ class AddonKeyMapUtility:
                 prefs = context.user_preferences.addons[name].preferences
             return prefs
 
-    def _kmu_get_current_values(self):
+    def __get_current_values(self):
         import itertools
         import mathutils
 
         values = []
-        km_table = self._kmu_reversed_keymap_table()
+        km_table = self.__reversed_keymap_table()
 
         keympap_items = []
-        for item in list(self._kmu_keymap_items):
+        for item in list(self.__keymap_items):
             km_name, kmi_id = item
-            km = self.kmu_get_keymap(km_name)
+            km = self.__get_keymap(km_name)
             for kmi in km.keymap_items:
                 if kmi.id == kmi_id:
                     keympap_items.append(kmi)
@@ -563,12 +560,12 @@ class AddonKeyMapUtility:
 
         return values
 
-    def _kmu_set_values(self, values, set_default=True):
+    def __set_values(self, values, set_default=True):
         import traceback
-        self._kmu_unregister_keymap_items()
+        self.__unregister_keymap_items()
         keymap_items = []
         for km_name, attrs, props in values:
-            km = self.kmu_get_keymap(km_name)
+            km = self.__get_keymap(km_name)
             if not 'SUPPORT_MODAL_KEYMAP' and km.is_modal:
                 raise ValueError(
                     "not support modal keymap: '{}'".format(km.name))
@@ -592,30 +589,30 @@ class AddonKeyMapUtility:
                 except:
                     traceback.print_exc()
             keymap_items.append(kmi)
-        self._kmu_register_keymap_items(keymap_items, set_default, False)
+        self.__register_keymap_items(keymap_items, set_default, False)
 
-    def _kmu_register_keymap_item(self, kmi):
+    def __register_keymap_item(self, kmi):
         """
         :param kmi: KeyMapItem 若しくは (KeyMap名, KeyMapItemのid)
         :type kmi: bpy.types.KeyMapItem | (str, int)
         """
         if isinstance(kmi, bpy.types.KeyMapItem):
-            km_tabel = self._kmu_reversed_keymap_table()
+            km_tabel = self.__reversed_keymap_table()
             km = km_tabel[kmi]
         else:
             km, kmi = kmi
         if not 'SUPPORT_MODAL_KEYMAP' and km.is_modal:
             raise ValueError("not support modal keymap: '{}'".format(km.name))
-        self._kmu_keymap_items.append((km.name, kmi.id))
+        self.__keymap_items.append((km.name, kmi.id))
 
-    def _kmu_register_keymap_items(self, addon_keymaps, set_default=True,
-                                  read_user_keymaps=True):
+    def __register_keymap_items(self, addon_keymaps, set_default=True,
+                                read_user_keymaps=True):
         """
         :param addon_keymaps: KeyMapItem 若しくは (KeyMap名, KeyMapItemのid) の
             リスト
         :type addon_keymaps: list[bpy.types.KeyMapItem] | list[(str, int)]
         """
-        km_tabel = self._kmu_reversed_keymap_table()
+        km_tabel = self.__reversed_keymap_table()
         items = []
         for kmi in addon_keymaps:
             if isinstance(kmi, bpy.types.KeyMapItem):
@@ -626,28 +623,28 @@ class AddonKeyMapUtility:
                 raise ValueError(
                     "not support modal keymap: '{}'".format(km.name))
             items.append((km.name, kmi.id))
-        self._kmu_keymap_items.extend(items)
+        self.__keymap_items.extend(items)
         if set_default:
-            self._kmu_keymaps_set_default()
+            self.__keymaps_set_default()
         if read_user_keymaps:
-            self.kmu_read_user_keymaps()
-        self.__class__.kmu_addon_keymaps = addon_keymaps
+            self.__keymaps_load()
+        self.__class__.addon_keymaps = addon_keymaps
 
-    def _kmu_unregister_keymap_item(self, kmi, remove=True):
+    def __unregister_keymap_item(self, kmi, remove=True):
         """
         :param kmi: KeyMapItem 若しくは (KeyMap名, KeyMapItemのid)
         :type kmi: bpy.types.KeyMapItem | (str, int)
         :param remove: KeyMapItemをKeyMapItemsから削除する
         :type remove: bool
         """
-        km_table = self._kmu_reversed_keymap_table()
+        km_table = self.__reversed_keymap_table()
         if isinstance(kmi, bpy.types.KeyMapItem):
             km = km_table[kmi]
             item = (km.name, kmi.id)
         else:
             item = kmi
             km_name, kmi_id = item
-            km = self.kmu_get_keymap(km_name)
+            km = self.__get_keymap(km_name)
             for kmi in km.keymap_items:
                 if kmi.id == kmi_id:
                     break
@@ -655,21 +652,21 @@ class AddonKeyMapUtility:
                 raise ValueError('KeyMapItem not fond')
         if not 'SUPPORT_MODAL_KEYMAP' and km.is_modal:
             raise ValueError("not support modal keymap: '{}'".format(km.name))
-        self._kmu_keymap_items.remove(item)
+        self.__keymap_items.remove(item)
         if remove:
             km.keymap_items.remove(kmi)
 
-    def _kmu_unregister_keymap_items(self, remove=True,
-                                    clear_addon_keymaps=True):
+    def __unregister_keymap_items(self, remove=True,
+                                  clear_addon_keymaps=True):
         """
         :param remove: KeyMapItemをKeyMapItemsから削除する
         :type remove: bool
-        :param clear_addon_keymaps: self.kmu_addon_keymaps.clear()
+        :param clear_addon_keymaps: self.addon_keymaps.clear()
         :type clear_addon_keymaps: bool
         """
         if remove:
-            for km_name, kmi_id in self._kmu_keymap_items:
-                km = self.kmu_get_keymap(km_name)
+            for km_name, kmi_id in self.__keymap_items:
+                km = self.__get_keymap(km_name)
                 for kmi in km.keymap_items:
                     if kmi.id == kmi_id:
                         break
@@ -679,33 +676,35 @@ class AddonKeyMapUtility:
                     raise ValueError(
                         "not support modal keymap: '{}'".format(km.name))
                 km.keymap_items.remove(kmi)
-        self._kmu_keymap_items.clear()
+        self.__keymap_items.clear()
         if clear_addon_keymaps:
-            if isinstance(self.kmu_addon_keymaps, list):
-                self.kmu_addon_keymaps.clear()
+            if isinstance(self.addon_keymaps, list):
+                self.addon_keymaps.clear()
 
-    def _kmu_keymaps_set_default(self):
+    def __keymaps_set_default(self):
         """現在登録しているKeyMapItemをrestore時の値とする"""
-        self._kmu_default_values.clear()
-        self._kmu_default_values[:] = self._kmu_get_current_values()
+        self.__default_values.clear()
+        self.__default_values[:] = self.__get_current_values()
 
-    def kmu_read_user_keymaps(self):
-        addon_prefs = self._kmu_get_instance()
+    def __keymaps_load(self):
+        addon_prefs = self.__get_instance()
         if self._KMU_IDPROP_NAME not in addon_prefs:
             return False
-        self._kmu_set_values(addon_prefs[self._KMU_IDPROP_NAME], False)
+        self.__set_values(addon_prefs[self._KMU_IDPROP_NAME], False)
         return True
 
-    def _kmu_keymaps_restore(self):
-        self._kmu_set_values(self._kmu_default_values, True)
+    def __keymaps_restore(self):
+        self.__set_values(self.__default_values, True)
 
-    get_instance = _kmu_get_instance
-    register_keymap_item = _kmu_register_keymap_item
-    register_keymap_items = _kmu_register_keymap_items
-    unregister_keymap_item = _kmu_unregister_keymap_item
-    unregister_keymap_items = _kmu_unregister_keymap_items
-    keymaps_set_default = _kmu_keymaps_set_default
-    keymaps_restore = _kmu_keymaps_restore
+    get_keymap = __get_keymap
+    get_instance = __get_instance
+    register_keymap_item = __register_keymap_item
+    register_keymap_items = __register_keymap_items
+    unregister_keymap_item = __unregister_keymap_item
+    unregister_keymap_items = __unregister_keymap_items
+    keymaps_set_default = __keymaps_set_default
+    keymaps_load = __keymaps_load
+    keymaps_restore = __keymaps_restore
 
     # draw ----------------------------------------------------------
 
@@ -872,7 +871,7 @@ class AddonKeyMapUtility:
             box.template_keymap_item_properties(kmi)
 
     def __draw_filtered(self, display_keymaps, filter_type, filter_text,
-                           layout):
+                        layout):
         _EVENT_TYPES = self.__EVENT_TYPES
         _EVENT_TYPE_MAP = self.__EVENT_TYPE_MAP
         _EVENT_TYPE_MAP_EXTRA = self.__EVENT_TYPE_MAP_EXTRA
@@ -1017,7 +1016,7 @@ class AddonKeyMapUtility:
             layout = self.layout
         col = layout.column()
 
-        show_keymaps = self.kmu_show_keymaps
+        show_keymaps = self.show_addon_keymaps
         if show_keymaps and box:
             col = col.box()
         col.context_pointer_set('addon_preferences', self)
@@ -1030,18 +1029,18 @@ class AddonKeyMapUtility:
         row = subcolsplit.row()
 
         icon = 'TRIA_DOWN' if show_keymaps else 'TRIA_RIGHT'
-        row.prop(self, 'kmu_show_keymaps', text='', icon=icon,
+        row.prop(self, 'show_addon_keymaps', text='', icon=icon,
                  emboss=False)
 
         display_keymaps = {}
-        for item in list(self._kmu_keymap_items):
+        for item in list(self.__keymap_items):
             km_name, kmi_id = item
-            km = self.kmu_get_keymap(km_name)
+            km = self.__get_keymap(km_name)
             for kmi in km.keymap_items:
                 if kmi.id == kmi_id:
                     break
             else:
-                self._kmu_keymap_items.remove(item)
+                self.__keymap_items.remove(item)
                 continue
             items = display_keymaps.setdefault(km, [])
             items.append(kmi)
@@ -1051,7 +1050,7 @@ class AddonKeyMapUtility:
         display_keymaps = list(display_keymaps.items())
 
         if not show_keymaps:
-            row.label('{} KeyMap Items'.format(len(self._kmu_keymap_items)))
+            row.label('{} KeyMap Items'.format(len(self.__keymap_items)))
             return
 
         row.separator()
@@ -1082,8 +1081,8 @@ class AddonKeyMapUtility:
         rowsubsub.prop(spref, "filter_text", text="", icon='VIEWZOOM')
 
         # Write / Restore
-        default_km = self._kmu_default_values
-        current_km = self._kmu_get_current_values()
+        default_km = self.__default_values
+        current_km = self.__get_current_values()
         if self._KMU_IDPROP_NAME in self:
             def idprop_to_py(prop):
                 if isinstance(prop, list):
@@ -1114,7 +1113,15 @@ class AddonKeyMapUtility:
 
     # operator ------------------------------------------------------
 
-    class __Registerable:
+    class __Helper:
+        def get_mangling(self, attr):
+            # TODO: クラス名がマングリングされていた場合はエラーとなる
+            addon_prefs = bpy.context.addon_preferences
+            qualname = addon_prefs._ADDON_KEY_MAP_UTILITY_QUALNAME
+            prefix = '_' + qualname.split('.')[-1].lstrip('_')
+            return getattr(addon_prefs, prefix + attr)
+
+    class __Registerable(__Helper):
         @classmethod
         def register_class(cls, rename=False):
             import re
@@ -1201,16 +1208,14 @@ class AddonKeyMapUtility:
             items=[(entry[0], entry[0], '') for entry in _get_entries()])
 
         def execute(self, context):
-            # addon_prefs = cls._kmu_get_instance()
-            addon_prefs = context.addon_preferences
-            km = addon_prefs.kmu_get_keymap(self.keymap)
+            km = self.get_mangling('__get_keymap')(self.keymap)
             if km.is_modal:
                 kmi = km.keymap_items.new_modal(
                     propvalue='', type='A', value='PRESS')
             else:
                 kmi = km.keymap_items.new(
                     idname='none', type='A', value='PRESS')
-            addon_prefs._kmu_register_keymap_item(kmi)
+            self.get_mangling('__register_keymap_item')(kmi)
             context.area.tag_redraw()
             return {'FINISHED'}
 
@@ -1228,11 +1233,9 @@ class AddonKeyMapUtility:
         item_id = bpy.props.IntProperty()
 
         def execute(self, context):
-            addon_prefs = context.addon_preferences
             for kmi in context.keymap.keymap_items:
                 if kmi.id == self.item_id:
-                    addon_prefs._kmu_unregister_keymap_item(kmi)
-                    # bpy.ops.wm.keyitem_remove(item_id)
+                    self.get_mangling('__unregister_keymap_item')(kmi)
                     return {'FINISHED'}
             context.area.tag_redraw()
             return {'CANCELLED'}
@@ -1245,7 +1248,7 @@ class AddonKeyMapUtility:
 
         def execute(self, context):
             addon_prefs = context.addon_preferences
-            value = addon_prefs._kmu_get_current_values()
+            value = self.get_mangling('__get_current_values')()
             addon_prefs[addon_prefs._KMU_IDPROP_NAME] = value
             return {'FINISHED'}
 
@@ -1256,7 +1259,7 @@ class AddonKeyMapUtility:
 
         def execute(self, context):
             addon_prefs = context.addon_preferences
-            addon_prefs._kmu_keymaps_restore()
+            self.get_mangling('__keymaps_restore')()
             if addon_prefs._KMU_IDPROP_NAME in addon_prefs:
                 del addon_prefs[addon_prefs._KMU_IDPROP_NAME]
             context.area.tag_redraw()
@@ -1320,7 +1323,7 @@ class AddonKeyMapUtility:
                 depth = max(depth, max_depth(entry, 1))
 
             used_keymap_names = {kmname for kmname, kmiid in
-                                 addon_prefs._kmu_keymap_items}
+                                 self.get_mangling('__keymap_items')}
 
             # 左の列を全部描画してから右の列にいかないとおかしな事になる
 
