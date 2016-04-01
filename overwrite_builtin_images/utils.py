@@ -327,6 +327,9 @@ class AddonKeyMapUtility:
                                   bpy.types.AddonPreferences):
         bl_idname = __name__
 
+        # register, unregister, draw をオーバーライドするなら
+        # super関数等を使って元のメソッドを実行する必要がある
+
         # @classmethod
         # def register(cls):
         #     super().register()
@@ -370,8 +373,9 @@ class AddonKeyMapUtility:
     _ADDON_KEY_MAP_UTILITY_QUALNAME = __qualname__
     _KMU_IDPROP_NAME = 'AddonKeyMapUtility_keymap_items'
 
-    addon_keymaps = None
+    __addon_keymaps = None
     """:type: list"""
+    addon_keymaps = __addon_keymaps
 
     # custom property -----------------------------------------------
 
@@ -454,7 +458,7 @@ class AddonKeyMapUtility:
 
     @staticmethod
     def __get_keymap(name):
-        """KeyMaps.new()の結果を返す。name以外の引数は勝手に補完してくれる。
+        """KeyMaps.new()の結果を返す。name以外の引数は勝手に補間してくれる。
         :type name: str
         :rtype: bpy.types.KeyMap
         """
@@ -497,6 +501,11 @@ class AddonKeyMapUtility:
 
     @classmethod
     def __get_instance(cls, package=''):
+        """AddonPreferencesのインスタンスを返す
+        :param package: ctools以外には関係ないもの
+        :type package: str
+        :rtype: AddonPreferences
+        """
         name = cls.bl_idname
         if name == 'ctools' or name.startswith('ctools.'):
             return cls.get_prefs(package)
@@ -560,7 +569,7 @@ class AddonKeyMapUtility:
 
         return values
 
-    def __set_values(self, values, set_default=True):
+    def __set_values(self, values):
         import traceback
         self.__unregister_keymap_items()
         keymap_items = []
@@ -589,10 +598,10 @@ class AddonKeyMapUtility:
                 except:
                     traceback.print_exc()
             keymap_items.append(kmi)
-        self.__register_keymap_items(keymap_items, set_default, False)
+        self.__register_keymap_items(keymap_items, False, False)
 
     def __register_keymap_item(self, kmi):
-        """
+        """KeyMapItemを登録する
         :param kmi: KeyMapItem 若しくは (KeyMap名, KeyMapItemのid)
         :type kmi: bpy.types.KeyMapItem | (str, int)
         """
@@ -606,8 +615,9 @@ class AddonKeyMapUtility:
         self.__keymap_items.append((km.name, kmi.id))
 
     def __register_keymap_items(self, addon_keymaps, set_default=True,
-                                read_user_keymaps=True):
-        """
+                                load=True):
+        """KeyMapItemを登録する。keymaps_set_default(), keymaps_load() も
+        まとめて行う。
         :param addon_keymaps: KeyMapItem 若しくは (KeyMap名, KeyMapItemのid) の
             リスト
         :type addon_keymaps: list[bpy.types.KeyMapItem] | list[(str, int)]
@@ -626,12 +636,12 @@ class AddonKeyMapUtility:
         self.__keymap_items.extend(items)
         if set_default:
             self.__keymaps_set_default()
-        if read_user_keymaps:
+        if load:
             self.__keymaps_load()
-        self.__class__.addon_keymaps = addon_keymaps
+        self.__class__.__addon_keymaps = addon_keymaps
 
     def __unregister_keymap_item(self, kmi, remove=True):
-        """
+        """KeyMapItemの登録を解除する
         :param kmi: KeyMapItem 若しくは (KeyMap名, KeyMapItemのid)
         :type kmi: bpy.types.KeyMapItem | (str, int)
         :param remove: KeyMapItemをKeyMapItemsから削除する
@@ -658,10 +668,12 @@ class AddonKeyMapUtility:
 
     def __unregister_keymap_items(self, remove=True,
                                   clear_addon_keymaps=True):
-        """
-        :param remove: KeyMapItemをKeyMapItemsから削除する
+        """全てのKeyMapItemの登録を解除する。
+        :param remove: KeyMapItemをKeyMap.keymap_itemsから削除する
         :type remove: bool
-        :param clear_addon_keymaps: self.addon_keymaps.clear()
+        :param clear_addon_keymaps:
+            register_keymap_items()の第一引数がリストだった場合にそれを空にする
+            self.addon_keymaps.clear()
         :type clear_addon_keymaps: bool
         """
         if remove:
@@ -678,23 +690,25 @@ class AddonKeyMapUtility:
                 km.keymap_items.remove(kmi)
         self.__keymap_items.clear()
         if clear_addon_keymaps:
-            if isinstance(self.addon_keymaps, list):
-                self.addon_keymaps.clear()
+            if isinstance(self.__addon_keymaps, list):
+                self.__addon_keymaps.clear()
 
     def __keymaps_set_default(self):
-        """現在登録しているKeyMapItemをrestore時の値とする"""
+        """現在登録しているKeyMapItemを初期値(restore時の値)とする"""
         self.__default_values.clear()
         self.__default_values[:] = self.__get_current_values()
 
     def __keymaps_load(self):
+        """保存されたキーマップを読んで現在のキーマップを置き換える"""
         addon_prefs = self.__get_instance()
         if self._KMU_IDPROP_NAME not in addon_prefs:
             return False
-        self.__set_values(addon_prefs[self._KMU_IDPROP_NAME], False)
+        self.__set_values(addon_prefs[self._KMU_IDPROP_NAME])
         return True
 
     def __keymaps_restore(self):
-        self.__set_values(self.__default_values, True)
+        """キーマップを初期値に戻す"""
+        self.__set_values(self.__default_values)
 
     get_keymap = __get_keymap
     get_instance = __get_instance
@@ -1010,6 +1024,14 @@ class AddonKeyMapUtility:
             self.__draw_entry(display_keymaps, entry, layout)
 
     def draw(self, context, layout=None, hierarchy=False, box=True):
+        """キーマップアイテムの一覧を描画。
+        :param context: bpy.types.Context
+        :param layout: bpy.types.UILayout
+        :param hierarchy: 階層表示にする
+        :type hierarchy: bool
+        :param box: 展開時にBoxで囲む
+        :type box: bool
+        """
         spref = context.space_data
 
         if layout is None:
