@@ -412,7 +412,7 @@ class AddonKeyMapUtility:
     # register / unregister -----------------------------------------
 
     @classmethod
-    def register(cls):
+    def register(cls, lookup=True):
         """継承したクラスでもregisterを定義するなら、super関数を使って
         このメソッドを呼ぶ。
         super().register()
@@ -426,12 +426,13 @@ class AddonKeyMapUtility:
         for c in classes:
             c.register_class()
 
-        c = super()
-        if hasattr(c, 'register'):
-            c.register()
+        if lookup:
+            c = super()
+            if hasattr(c, 'register'):
+                c.register()
 
     @classmethod
-    def unregister(cls):
+    def unregister(cls, lookup=True):
         """注意事項はregisterと同じ"""
 
         classes = [cls.__WM_OT_kmu_keymap_item_add,
@@ -443,9 +444,10 @@ class AddonKeyMapUtility:
         for c in classes[::-1]:
             c.unregister_class()
 
-        c = super()
-        if hasattr(c, 'unregister'):
-            c.unregister()
+        if lookup:
+            c = super()
+            if hasattr(c, 'unregister'):
+                c.unregister()
 
     @staticmethod
     def __reversed_keymap_table():
