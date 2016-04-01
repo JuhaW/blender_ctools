@@ -473,7 +473,7 @@ class AddonKeyMapUtility:
         if not kc:
             return None
 
-        # if not 'SUPPORT_MODAL_KEYMAP' and name in modal_keymaps:
+        # if 'INVALID_MODAL_KEYMAP' and name in modal_keymaps:
         #     msg = "not support modal keymap: '{}'".format(name)
         #     raise ValueError(msg)
 
@@ -566,7 +566,7 @@ class AddonKeyMapUtility:
         keymap_items = []
         for km_name, attrs, props in values:
             km = self.__get_keymap(km_name)
-            if not 'SUPPORT_MODAL_KEYMAP' and km.is_modal:
+            if 'INVALID_MODAL_KEYMAP' and km.is_modal:
                 raise ValueError(
                     "not support modal keymap: '{}'".format(km.name))
             if km.is_modal:
@@ -601,7 +601,7 @@ class AddonKeyMapUtility:
             km = km_tabel[kmi]
         else:
             km, kmi = kmi
-        if not 'SUPPORT_MODAL_KEYMAP' and km.is_modal:
+        if 'INVALID_MODAL_KEYMAP' and km.is_modal:
             raise ValueError("not support modal keymap: '{}'".format(km.name))
         self.__keymap_items.append((km.name, kmi.id))
 
@@ -619,7 +619,7 @@ class AddonKeyMapUtility:
                 km = km_tabel[kmi]
             else:
                 km, kmi = kmi
-            if not 'SUPPORT_MODAL_KEYMAP' and km.is_modal:
+            if 'INVALID_MODAL_KEYMAP' and km.is_modal:
                 raise ValueError(
                     "not support modal keymap: '{}'".format(km.name))
             items.append((km.name, kmi.id))
@@ -650,7 +650,7 @@ class AddonKeyMapUtility:
                     break
             else:
                 raise ValueError('KeyMapItem not fond')
-        if not 'SUPPORT_MODAL_KEYMAP' and km.is_modal:
+        if 'INVALID_MODAL_KEYMAP' and km.is_modal:
             raise ValueError("not support modal keymap: '{}'".format(km.name))
         self.__keymap_items.remove(item)
         if remove:
@@ -672,7 +672,7 @@ class AddonKeyMapUtility:
                         break
                 else:
                     raise ValueError('KeyMapItem not fond')
-                if not 'SUPPORT_MODAL_KEYMAP' and km.is_modal:
+                if 'INVALID_MODAL_KEYMAP' and km.is_modal:
                     raise ValueError(
                         "not support modal keymap: '{}'".format(km.name))
                 km.keymap_items.remove(kmi)
@@ -1193,7 +1193,8 @@ class AddonKeyMapUtility:
             def get():
                 def _get(entry):
                     idname, spaceid, regionid, children = entry
-                    if idname not in modal_keymaps or 'SUPPORT_MODAL_KEYMAP':
+                    if not ('INVALID_MODAL_KEYMAP' and
+                                idname in modal_keymaps):
                         yield entry
                         for e in children:
                             yield from _get(e)
@@ -1281,7 +1282,7 @@ class AddonKeyMapUtility:
             column.context_pointer_set('addon_preferences', addon_prefs)
 
             def get_non_modal_km_hierarchy():
-                if 'SUPPORT_MODAL_KEYMAP':
+                if not 'INVALID_MODAL_KEYMAP':
                     return bpy_extras.keyconfig_utils.KM_HIERARCHY
 
                 modal_keymaps = {'View3D Gesture Circle', 'Gesture Border',
