@@ -48,7 +48,7 @@ import blf
 import bpy.props
 
 from .structures import wmWindow, wmEventHandler
-from .utils import AddonPreferences
+from .utils import AddonPreferences, AddonKeyMapUtility
 
 
 MOUSE_RATIO = 0.535
@@ -1409,6 +1409,7 @@ class ScreencastKeysTimerReset(bpy.types.Operator):
 
 # properties used by the script
 class ScreenCastKeysPreferences(
+        AddonKeyMapUtility,
         AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -1583,6 +1584,8 @@ class ScreenCastKeysPreferences(
         row.enabled = pref.timer_show
         row.operator("view3d.screencast_keys_timer_reset", text="Reset")
 
+        super().draw(context, layout.column())
+
 
 # defining the panel
 class OBJECT_PT_keys_status(bpy.types.Panel):
@@ -1689,20 +1692,22 @@ def register():
                                   shift=True, alt=True)
         addon_keymaps.append((km, kmi))
 
-
+        addon_prefs = ScreenCastKeysPreferences.get_instance()
+        """:type: ScreenCastKeysPreferences"""
+        addon_prefs.register_keymap_items(addon_keymaps)
 
 
 def unregister():
+    # handle the keymap
+    addon_prefs = ScreenCastKeysPreferences.get_instance()
+    """:type: ScreenCastKeysPreferences"""
+    addon_prefs.unregister_keymap_items()
+
     # incase its enabled
     ScreencastKeysStatus.handle_remove(bpy.context)
 
     for c in classes:
         bpy.utils.unregister_class(c)
-
-    # handle the keymap
-    for km, kmi in addon_keymaps:
-        km.keymap_items.remove(kmi)
-    addon_keymaps.clear()
 
 
 if __name__ == "__main__":

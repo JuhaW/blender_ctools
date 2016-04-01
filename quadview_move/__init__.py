@@ -41,7 +41,7 @@ import math
 import bpy
 
 from .structures import *
-from .utils import AddonPreferences, SpaceProperty
+from .utils import AddonPreferences, SpaceProperty, AddonKeyMapUtility
 
 
 # regionの幅と高さの最小幅
@@ -49,6 +49,7 @@ MIN_SIZE = 5
 
 
 class QuadViewMovePreferences(
+        AddonKeyMapUtility,
         AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -66,6 +67,8 @@ class QuadViewMovePreferences(
         row.prop(self, 'threshold')
         column = split.column()
         column = split.column()
+
+        super().draw(context, layout.column())
 
 
 def get_window_modal_handlers(window):
@@ -366,11 +369,15 @@ def register():
                                   head=True)
         addon_keymaps.append((km, kmi))
 
+        addon_prefs = QuadViewMovePreferences.get_instance()
+        """:type: QuadViewMovePreferences"""
+        addon_prefs.register_keymap_items(addon_keymaps)
+
 
 def unregister():
-    for km, kmi in addon_keymaps:
-        km.keymap_items.remove(kmi)
-    addon_keymaps.clear()
+    addon_prefs = QuadViewMovePreferences.get_instance()
+    """:type: QuadViewMovePreferences"""
+    addon_prefs.unregister_keymap_items()
 
     bpy.app.handlers.scene_update_post.remove(scene_update_func)
 

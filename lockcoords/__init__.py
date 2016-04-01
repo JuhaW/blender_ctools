@@ -50,6 +50,8 @@ import bpy
 import bmesh
 from mathutils import Vector
 
+from . import utils
+
 
 # BMLayerItem name
 # 他のアドオンと衝突するようなら変更する
@@ -795,6 +797,17 @@ def draw_header(self, context):
 
 
 ###############################################################################
+# AddonPreferences
+###############################################################################
+class LockCoordsPreferences(
+        utils.AddonKeyMapUtility,
+        utils.AddonPreferences,
+        bpy.types.PropertyGroup if '.' in __name__ else
+        bpy.types.AddonPreferences):
+    bl_idname = __name__
+
+
+###############################################################################
 # Register
 ###############################################################################
 classes = [
@@ -804,6 +817,7 @@ classes = [
     WM_PROP_LockCoords,
     MESH_PT_LockCoords,
     VIEW3D_MT_edit_mesh_lock_coords,
+    LockCoordsPreferences,
 ]
 
 addon_keymaps = []
@@ -837,6 +851,9 @@ def register():
                 # import traceback
                 # traceback.print_exc()
                 pass
+        addon_prefs = LockCoordsPreferences.get_instance()
+        """:type: LockCoordsPreferences"""
+        addon_prefs.register_keymap_items(addon_keymaps)
 
 
 def unregister():
@@ -848,9 +865,9 @@ def unregister():
         if obj.get('lock_coords') is not None:
             del obj['lock_coords']
 
-    for km, kmi in addon_keymaps:
-        km.keymap_items.remove(kmi)
-    addon_keymaps.clear()
+    addon_prefs = LockCoordsPreferences.get_instance()
+    """:type: LockCoordsPreferences"""
+    addon_prefs.unregister_keymap_items()
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

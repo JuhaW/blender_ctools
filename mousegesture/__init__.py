@@ -38,7 +38,7 @@ import bgl
 import blf
 from mathutils import Vector
 
-from .utils import AddonPreferences
+from .utils import AddonPreferences, AddonKeyMapUtility
 
 PIXEL_SIZE = 1.0
 
@@ -725,6 +725,7 @@ class WM_OT_mouse_gesture_from_text(bpy.types.Operator):
 
 
 class MouseGesturePreferences(
+        AddonKeyMapUtility,
         AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -790,6 +791,8 @@ class MouseGesturePreferences(
         op = sub.operator('wm.mouse_gesture_stubs', text='Add New',
                           icon='ZOOMIN')
         op.function = 'group_add'
+
+        super().draw(context, column.column())
 
 
 ###############################################################################
@@ -1458,14 +1461,19 @@ def register():
             kmi.properties.group = 'Mesh Select Mode'
             addon_keymaps.append((km, kmi))
 
+        addon_prefs = MouseGesturePreferences.get_instance()
+        """:type: MouseGesturePreferences"""
+        addon_prefs.register_keymap_items(addon_keymaps)
+
     bpy.app.handlers.scene_update_pre.append(scene_update_pre)
     bpy.app.handlers.load_post.append(load_handler)
 
 
 def unregister():
-    for km, kmi in addon_keymaps:
-        km.keymap_items.remove(kmi)
-    addon_keymaps.clear()
+    addon_prefs = MouseGesturePreferences.get_instance()
+    """:type: MouseGesturePreferences"""
+    addon_prefs.unregister_keymap_items()
+
     for km, kmi in blender_keymaps:
         kmi.value = 'PRESS'
     blender_keymaps.clear()
