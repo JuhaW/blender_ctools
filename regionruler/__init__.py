@@ -17,6 +17,19 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
+bl_info = {
+    'name': 'Region Ruler',
+    'author': 'chromoly',
+    'version': (2, 3),
+    'blender': (2, 77, 0),
+    'location': 'View3D > Properties, ImageEditor > Properties',
+    'description': '',
+    'warning': '',
+    'wiki_url': 'https://github.com/chromoly/regionruler',
+    'category': '3D View',
+}
+
+
 """
 View3DとImageEditorにRulerを表示。
 
@@ -33,29 +46,17 @@ ModalOperatorの実行中はAutoSaveが無効になるので、wm.save_as_mainfi
 """
 
 
-bl_info = {
-    'name': 'Region Ruler',
-    'author': 'chromoly',
-    'version': (2, 3),
-    'blender': (2, 76, 0),
-    'location': 'View3D > Properties, ImageEditor > Properties',
-    'description': '',
-    'warning': '',
-    'wiki_url': 'https://github.com/chromoly/regionruler',
-    'category': '3D View'
-}
-
-
-import math
-import string
 from collections import OrderedDict
 import decimal
 from decimal import Decimal
-import pprint
+import importlib
+import logging
+import math
 import os
 import platform
+# import pprint
+import string
 import time
-import logging
 
 import bpy
 import bgl
@@ -64,22 +65,29 @@ from mathutils import Matrix, Vector
 import mathutils.geometry as geom
 from bpy.app.handlers import persistent
 
-if 0:
-    import va
-    import va.vaprops as vap
-    import va.vagl as vagl
-    import va.vaview3d as vav
-    import va.vawm as vawm
-    import va.vamath as vam
-    from va.unitsystem import UnitSystem
-else:
-    from . import vaprops as vap
+# import va
+# import va.vaprops as vap
+# import va.vagl as vagl
+# import va.vaview3d as vav
+# import va.vawm as vawm
+# import va.vamath as vam
+# from va.unitsystem import UnitSystem
+try:
+    importlib.reload(unitsystem)
+    importlib.reload(utils)
+    importlib.reload(vagl)
+    importlib.reload(vam)
+    importlib.reload(vap)
+    importlib.reload(vav)
+    importlib.reload(vawm)
+except NameError:
+    from . import unitsystem
+    from . import utils
     from . import vagl
-    from . import vaview3d as vav
     from . import vamath as vam
+    from . import vaprops as vap
+    from . import vaview3d as vav
     from . import vawm
-    from .unitsystem import UnitSystem
-from .utils import AddonPreferences, SpaceProperty
 
 
 # 他のModalHandlerが開始する度にRulerを再起動する
@@ -258,7 +266,7 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
         update=_update_redraw)
 
 
-space_prop = SpaceProperty(
+space_prop = utils.SpaceProperty(
     [bpy.types.SpaceView3D, 'region_ruler', RegionRuler_PG],
     [bpy.types.SpaceImageEditor, 'region_ruler', RegionRuler_PG]
 
@@ -266,7 +274,7 @@ space_prop = SpaceProperty(
 
 
 class RegionRulerPreferences(
-        AddonPreferences,
+        utils.AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     def draw_property(self, attr, layout, text=None, skip_hidden=True,
@@ -559,7 +567,7 @@ class Data:
                 override['system'] = 'METRIC'
             elif ruler_settings.unit == 'imperial':
                 override['system'] = 'IMPERIAL'
-            unit_system = UnitSystem(context, override)
+            unit_system = unitsystem.UnitSystem(context, override)
             unit_system_2d_x = unit_system_2d_y = None
 
             # View: top, right, left, ...
@@ -598,7 +606,7 @@ class Data:
             override = {'grid_scale': 1.0,
                         'grid_subdivisions': 10,
                         'system': 'NONE'}
-            unit_system = UnitSystem(context, override)
+            unit_system = unitsystem.UnitSystem(context, override)
             view_type = 'top'
             sign_x = sign_y = 1
             vmat = Matrix(glsettings.modelview_matrix).transposed()
@@ -607,11 +615,11 @@ class Data:
             # X,Y毎にunit_systemを作成
             image_editor_unit = ruler_settings.image_editor_unit
             axis = 'x' if image_editor_unit == 'uv' else 'pixel_x'
-            unit_system_2d_x = UnitSystem(context, override,
-                                          image_editor_unit=axis)
+            unit_system_2d_x = unitsystem.UnitSystem(
+                context, override, image_editor_unit=axis)
             axis = 'y' if image_editor_unit == 'uv' else 'pixel_y'
-            unit_system_2d_y = UnitSystem(context, override,
-                                          image_editor_unit=axis)
+            unit_system_2d_y = unitsystem.UnitSystem(
+                context, override, image_editor_unit=axis)
             image_sx, image_sy = unit_system.image_size
             if image_sx == 0:
                 image_sx = 256
@@ -970,7 +978,7 @@ def scale_label_interval(context, unit_system, cnt):
 def make_scale_label(context, unit_system, cnt):
     """
     :param unit_system:
-    :type unit_system: UnitSystem
+    :type unit_system: unitsystem.UnitSystem
     :param cnt:
     :type cnt: int
     :rtype: str

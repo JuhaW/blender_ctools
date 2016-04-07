@@ -23,7 +23,7 @@ bl_info = {
     "name": "Screencast Keys Mod",
     "author": "Paulo Gomes, Bart Crouch, John E. Herrenyo, Gaia Clary, Pablo Vazquez, chromoly",
     "version": (1, 7, 4),
-    "blender": (2, 76, 0),
+    "blender": (2, 77, 0),
     "location": "3D View > Properties Panel > Screencast Keys",
     "warning": "",
     "description": "Display keys pressed in the 3D View, "
@@ -33,20 +33,26 @@ bl_info = {
     'wiki_url2': 'https://github.com/chromoly/blender-ScreencastKeysMod',
     "tracker_url": "http://projects.blender.org/tracker/index.php?"
                    "func=detail&aid=21612",
-    "category": "3D View"
+    "category": "3D View",
 }
 
-import time
+from ctypes import *
 import datetime
 import functools
-from ctypes import *
+import importlib
 import logging
+import time
 
 import bpy
 import bgl
 import blf
 import bpy.props
 
+try:
+    importlib.reload(structures)
+    importlib.reload(utils)
+except NameError:
+    pass
 from .structures import wmWindow, wmEventHandler
 from .utils import AddonPreferences, AddonKeyMapUtility
 

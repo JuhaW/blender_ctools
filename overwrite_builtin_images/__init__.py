@@ -21,7 +21,7 @@ bl_info = {
     'name': 'Overwrite Builtin Images',
     'author': 'chromoly',
     'version': (0, 2),
-    'blender': (2, 76, 0),
+    'blender': (2, 77, 0),
     'location': 'UserPreference > Add-ons > Overwrite Builtin Images',
     'description': 'Overwrite splash and icon images',
     'warning': 'Linux only',
@@ -30,13 +30,17 @@ bl_info = {
 }
 
 
-import platform
 import ctypes
+import importlib
+import platform
 
 import bpy
 import bpy.props
 
-from .utils import AddonPreferences
+try:
+    importlib.reload(utils)
+except NameError:
+    from . import utils
 
 
 def test_platform():
@@ -191,7 +195,7 @@ def update_icons32(self, context):
 
 
 class OverwriteSplashImagePreferences(
-        AddonPreferences,
+        utils.AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__

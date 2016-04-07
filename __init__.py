@@ -17,33 +17,6 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
-import platform
-import inspect
-import traceback
-import tempfile
-import urllib.request
-import zipfile
-import os
-import shutil
-import pathlib
-import difflib
-import sys
-import hashlib
-import datetime
-
-import bpy
-
-from . import drawnearest
-from . import lockcoords
-from . import lockcursor3d
-from . import mousegesture
-from . import overwrite_builtin_images
-from . import quadview_move
-from . import regionruler
-from . import screencastkeys
-from . import updatetag
-
-
 bl_info = {
     'name': 'CTools',
     'author': 'chromoly',
@@ -53,8 +26,45 @@ bl_info = {
     'description': 'Collection of add-ons',
     'warning': '',
     'wiki_url': 'https://github.com/chromoly/blender_ctools',
-    'category': 'User Interface'
+    'category': 'User Interface',
 }
+
+
+import difflib
+import hashlib
+import importlib
+import inspect
+import os
+import pathlib
+import platform
+import shutil
+import traceback
+import tempfile
+import urllib.request
+import zipfile
+
+import bpy
+
+try:
+    importlib.reload(drawnearest)
+    importlib.reload(lockcoords)
+    importlib.reload(lockcursor3d)
+    importlib.reload(mousegesture)
+    importlib.reload(overwrite_builtin_images)
+    importlib.reload(quadview_move)
+    importlib.reload(regionruler)
+    importlib.reload(screencastkeys)
+    importlib.reload(updatetag)
+except NameError:
+    from . import drawnearest
+    from . import lockcoords
+    from . import lockcursor3d
+    from . import mousegesture
+    from . import overwrite_builtin_images
+    from . import quadview_move
+    from . import regionruler
+    from . import screencastkeys
+    from . import updatetag
 
 
 UPDATE_DRY_RUN = False

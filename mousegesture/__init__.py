@@ -21,24 +21,30 @@ bl_info = {
     'name': 'Mouse Gesture',
     'author': 'chromoly',
     'version': (0, 7),
-    'blender': (2, 76, 0),
+    'blender': (2, 77, 0),
     'location': 'UserPreferences > Add-ons > Mouse Gesture',
     'description': '',
     'warning': '',
     'wiki_url': 'https://github.com/chromoly/blender_mouse_gesture',
-    'category': 'User Interface'}
+    'category': 'User Interface',
+}
 
 
-import math
-import fnmatch
 from contextlib import contextmanager
+import fnmatch
+import importlib
+import math
 
 import bpy
 import bgl
 import blf
 from mathutils import Vector
 
-from .utils import AddonPreferences, AddonKeyMapUtility
+try:
+    importlib.reload(utils)
+except NameError:
+    from . import utils
+
 
 PIXEL_SIZE = 1.0
 
@@ -725,8 +731,8 @@ class WM_OT_mouse_gesture_from_text(bpy.types.Operator):
 
 
 class MouseGesturePreferences(
-        AddonKeyMapUtility,
-        AddonPreferences,
+        utils.AddonKeyMapUtility,
+        utils.AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__

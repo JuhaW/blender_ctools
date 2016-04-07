@@ -21,14 +21,15 @@ bl_info = {
     'name': 'Lock Coordinates',
     'author': 'chromoly',
     'version': (0, 2, 3),
-    'blender': (2, 76, 0),
+    'blender': (2, 77, 0),
     'location': 'View3D > ToolShelf > Lock Coordinates, '
                 'View3D > Header, '
                 'View3D > Ctrl + V > Lock, '
                 'View3D > Ctrl + Shift + L',
     'description': 'Lock vertices coordinates in mesh edit mode',
     'wiki_url': 'https://github.com/chromoly/blender_lock_coords',
-    'category': 'Mesh'}
+    'category': 'Mesh',
+}
 
 
 """
@@ -42,15 +43,19 @@ bpy.ops.mesh.sort_elements()で頂点の順番が並び替えられる。
 """
 
 
-import time
-import platform
 import ctypes
+import importlib
+import platform
+import time
 
 import bpy
 import bmesh
 from mathutils import Vector
 
-from . import utils
+try:
+    importlib.reload(utils)
+except NameError:
+    from . import utils
 
 
 # BMLayerItem name

@@ -21,13 +21,14 @@ bl_info = {
     'name': 'QuadView Move',
     'author': 'chromoly',
     'version': (0, 2),
-    'blender': (2, 76, 0),
+    'blender': (2, 77, 0),
     'location': 'View3D',
     'description': '',
     'warning': '',
     'wiki_url': 'https://github.com/chromoly/quadview_move',
     'tracker_url': '',
-    'category': '3D View'}
+    'category': '3D View',
+}
 
 
 """
@@ -35,11 +36,16 @@ QuadViewの境界中心をドラッグする事でその大きさを変更する
 """
 
 
-from ctypes import POINTER, cast, c_void_p
+import importlib
 import math
 
 import bpy
 
+try:
+    importlib.reload(structures)
+    importlib.reload(utils)
+except NameError:
+    pass
 from .structures import *
 from .utils import AddonPreferences, SpaceProperty, AddonKeyMapUtility
 

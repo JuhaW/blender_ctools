@@ -17,35 +17,40 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
+bl_info = {
+    'name': 'Update Tag',
+    'author': 'chromoly',
+    'version': (0, 3),
+    'blender': (2, 77, 0),
+    'location': '',
+    'description': '',
+    'wiki_url': 'https://github.com/chromoly/blender_update_tag',
+    'category': '3D View',
+}
+
+
 """
 1. マテリアルやテクスチャのドライバーの値が変更された時に3DViewを更新
 2. Sculptモードでブラシ描画の際にRendered表示の3DViewを更新
 """
 
 
-bl_info = {
-    'name': 'Update Tag',
-    'author': 'chromoly',
-    'version': (0, 3),
-    'blender': (2, 76, 0),
-    'location': '',
-    'description': '',
-    'wiki_url': 'https://github.com/chromoly/blender_update_tag',
-    'category': '3D View'
-}
-
-
 from ctypes import Structure, POINTER, cast, \
     c_char, c_char_p, c_short, c_int, c_void_p, py_object
+import importlib
 import time
 
 import bpy
 
-from .utils import AddonPreferences
+try:
+    importlib.reload(utils)
+except NameError:
+    pass
+from . import utils
 
 
 class UpdateTagPreferences(
-        AddonPreferences,
+        utils.AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__

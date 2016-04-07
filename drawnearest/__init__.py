@@ -17,30 +17,31 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
-"""
-MeshのEditModeに於いて、右クリックで選択される頂点/辺/面を強調表示する。
-"""
-
 bl_info = {
     'name': 'Edit Mesh Draw Nearest',
     'author': 'chromoly',
     'version': (0, 4),
-    'blender': (2, 76, 0),
+    'blender': (2, 77, 0),
     'location': 'View3D > Properties Panel > Mesh Display',
     'wiki_url': 'https://github.com/chromoly/blender-EditMeshDrawNearest',
     'category': '3D View',
 }
 
 
-import math
-from ctypes import addressof, sizeof, byref, c_bool, pointer
-import numpy as np
-import contextlib
-import functools
-import inspect
+"""
+MeshのEditModeに於いて、右クリックで選択される頂点/辺/面を強調表示する。
+"""
+
+
 import collections
+import contextlib
+from ctypes import addressof, sizeof, byref, c_bool, pointer
 import enum
-import time
+import functools
+import importlib
+import inspect
+import numpy as np
+import math
 
 import bpy
 import bmesh
@@ -50,8 +51,13 @@ import bgl
 import blf
 # from bpy_extras.view3d_utils import location_3d_to_region_2d as project
 
-from .utils import AddonPreferences, SpaceProperty, operator_call
+try:
+    importlib.reload(structures)
+    importlib.reload(utils)
+except NameError:
+    pass
 from .structures import *
+from .utils import AddonPreferences, SpaceProperty, operator_call
 
 
 # glVertexへ渡すZ値。

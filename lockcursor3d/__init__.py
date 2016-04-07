@@ -17,6 +17,20 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
+bl_info = {
+    'name': 'Lock 3D Cursor',
+    'author': 'chromoly',
+    'version': (0, 3),
+    'blender': (2, 77, 0),
+    'location': '3D View',
+    'description': 'commit a791153: 3D Cursor: Add option to lock it in place '
+                   'to prevent accidental modification',
+    'warning': '',
+    'wiki_url': 'https://github.com/chromoly/lock_cursor3d',
+    'tracker_url': '',
+    'category': '3D View'
+}
+
 """
 commit a791153ca5e6f87d50396e188a3664b579884161
 3D Cursor: Add option to lock it in place to prevent accidental modification
@@ -27,30 +41,20 @@ commit a791153ca5e6f87d50396e188a3664b579884161
 """
 
 
-bl_info = {
-    'name': 'Lock 3D Cursor',
-    'author': 'chromoly',
-    'version': (0, 3),
-    'blender': (2, 76, 0),
-    'location': '3D View',
-    'description': 'commit a791153: 3D Cursor: Add option to lock it in place '
-                   'to prevent accidental modification',
-    'warning': '',
-    'wiki_url': 'https://github.com/chromoly/lock_cursor3d',
-    'tracker_url': '',
-    'category': '3D View'
-}
-
+import importlib
 
 import bpy
 
-from .utils import SpaceProperty
+try:
+    importlib.reload(utils)
+except NameError:
+    from . import utils
 
 
 TARGET_KEYCONFIG = 'Blender'  # or 'Blender User'
 
 
-space_prop = SpaceProperty(
+space_prop = utils.SpaceProperty(
     [bpy.types.SpaceView3D,
      'lock_cursor_location',
      bpy.props.BoolProperty(
