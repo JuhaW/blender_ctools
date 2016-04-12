@@ -621,6 +621,9 @@ wmEventHandler._fields_ = fields(
     ListBase, '*dropboxes',
 )
 
+# wmEventHandler.flag
+WM_HANDLER_DO_FREE = 1 << 7
+
 
 class wmWindow(Structure):
     """source/blender/makesdna/DNA_windowmanager_types.h: 175"""
@@ -642,14 +645,10 @@ _fields = fields(
     c_short, 'lastcursor',
     c_short, 'modalcursor',
     c_short, 'grabcursor',  # GHOST_TGrabCursorMode
-    c_short, 'addmousemove'
-)
-if bpy.app.version[:2] == (2, 77):
-    _fields.extend(fields(
-        c_short, 'multisamples',
-        c_short, 'pad[3]',
-    ))
-_fields.extend(fields(
+    c_short, 'addmousemove',
+    c_short, 'multisamples',
+    c_short, 'pad[3]',
+
     c_int, 'winid',
 
     # internal, lock pie creation from this event until released
@@ -677,7 +676,7 @@ _fields.extend(fields(
     ListBase, 'gesture',
 
     c_void_p, 'stereo3d_format',  # struct Stereo3dFormat
-))
+)
 wmWindow._fields_ = _fields
 
 

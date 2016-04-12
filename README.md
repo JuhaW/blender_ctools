@@ -38,6 +38,10 @@
 ## [Update Tag](https://github.com/chromoly/blender_update_tag 'Update Tag')
 マテリアルやテクスチャのドライバーの値が変更された際に3DViewを更新する。  
 
+## List Valid Keys
+現在アクティブなAreaとRegionで有効なショートカットの一覧を標準出力かTextへ出力する。
+![Image](images/listvalidkeys.jpg)
+
 ## その他
 ### patch/ui_layout_box.patch
 alignが真の状態のUILayoutでbox描画に不具合が起こる問題を修正するパッチ。  

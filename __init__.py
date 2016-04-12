@@ -51,6 +51,7 @@ try:
     importlib.reload(lockcursor3d)
     importlib.reload(mousegesture)
     importlib.reload(overwrite_builtin_images)
+    importlib.reload(listvalidkeys)
     importlib.reload(quadview_move)
     importlib.reload(regionruler)
     importlib.reload(screencastkeys)
@@ -61,6 +62,7 @@ except NameError:
     from . import lockcursor3d
     from . import mousegesture
     from . import overwrite_builtin_images
+    from . import listvalidkeys
     from . import quadview_move
     from . import regionruler
     from . import screencastkeys
@@ -76,6 +78,7 @@ sub_modules = [
     lockcursor3d,
     mousegesture,
     overwrite_builtin_images,
+    listvalidkeys,
     quadview_move,
     regionruler,
     screencastkeys,
