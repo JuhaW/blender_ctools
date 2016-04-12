@@ -44,7 +44,7 @@ except NameError:
     from . import utils
 
 
-TEXT_NAME = 'active_keymap_items.txt'
+TEXT_NAME = 'valid_shortcuts.txt'
 
 
 class ListValidKeysPreferences(
