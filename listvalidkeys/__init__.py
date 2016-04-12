@@ -208,10 +208,22 @@ class WM_OT_list_valid_keys(bpy.types.Operator):
         identifiers = [e.identifier for e in prop.enum_items]
         return sorted(region_types, key=identifiers.index)
 
+    @staticmethod
+    def enum_item_identifer_to_name(type, prop, identifier):
+        prop = type.bl_rna.properties[prop]
+        for e in prop.enum_items:
+            if e.identifier == identifier:
+                return e.name
+        raise ValueError()
+
     def draw(self, context):
         layout = self.layout
         column = layout.column()
-        column.label('{} - {}'.format(context.area.type, context.region.type))
+        area_name = self.enum_item_identifer_to_name(
+            bpy.types.Area, 'type', context.area.type)
+        region_name = self.enum_item_identifer_to_name(
+            bpy.types.Region, 'type', context.region.type)
+        column.label('{} - {}'.format(area_name, region_name))
         area_region_types = set(r.type for r in context.area.regions)
         area_region_types = self.sorted_region_types(area_region_types)
         visible_region_types = set(r.type for r in context.area.regions
@@ -235,17 +247,21 @@ class WM_OT_list_valid_keys(bpy.types.Operator):
                     if getattr(self, attr):
                         region_types.append(region_type)
         region_types = self.sorted_region_types(region_types)
+        region_types_name = [
+            self.enum_item_identifer_to_name(bpy.types.Region, 'type', rt)
+            for rt in region_types]
 
         area = context.area
         # region = context.region
         if len(region_types) == 1:
-            rt = region_types[0]
-        elif len(region_types) > 1:
-            rt = '[{}]'.format(', '.join(region_types))
+            rt = region_types_name[0]
+        elif len(region_types_name) > 1:
+            rt = '[{}]'.format(', '.join(region_types_name))
         else:
             rt = 'NONE'
-        output.append(
-            '<{} - {}> Key Maps'.format(area.type, rt))
+        area_name = self.enum_item_identifer_to_name(
+            bpy.types.Area, 'type', area.type)
+        output.append('<{} - {}> Key Maps'.format(area_name, rt))
 
         regions = [r for r in area.regions if r.type in region_types]
         keymaps = context_keymaps(context, regions)
