@@ -239,7 +239,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawTextHelpFormatter,
-        description='Overwrite blender-2.75(a) splash/icons image.',
+        description='Overwrite blender-2.75(a) splash/icons image',
         usage=script_usage
     )
     parser.add_argument(

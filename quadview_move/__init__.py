@@ -370,13 +370,12 @@ def register():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
-        km = kc.keymaps.new('Screen Editing', space_type='EMPTY')
+        addon_prefs = QuadViewMovePreferences.get_instance()
+        """:type: QuadViewMovePreferences"""
+        km = addon_prefs.get_keymap('Screen Editing')
         kmi = km.keymap_items.new('view3d.quadview_move', 'LEFTMOUSE', 'PRESS',
                                   head=True)
         addon_keymaps.append((km, kmi))
-
-        addon_prefs = QuadViewMovePreferences.get_instance()
-        """:type: QuadViewMovePreferences"""
         addon_prefs.register_keymap_items(addon_keymaps)
 
 
