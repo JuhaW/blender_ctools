@@ -1202,9 +1202,9 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
         else:
             elems = edges
 
+    context.tool_settings.mesh_select_mode = mode
     if r != {'CANCELLED'} or not ring and toggle:
         bpy.ops.mesh.select_all(context_dict, False, action='DESELECT')
-        context.tool_settings.mesh_select_mode = mode
         if mode == [False, False, True]:
             for f in faces_pre:
                 f.select = True
