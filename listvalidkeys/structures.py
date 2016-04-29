@@ -953,9 +953,24 @@ BMEditMesh._fields_ = fields(
 )
 
 
+class CustomDataLayer(Structure):
+    _fields_ = fields(
+        c_int, 'type',       # type of data in layer
+        c_int, 'offset',     # in editmode, offset of layer in block
+        c_int, 'flag',       # general purpose flag
+        c_int, 'active',     # number of the active layer of this type
+        c_int, 'active_rnd', # number of the layer to render
+        c_int, 'active_clone', # number of the layer to render
+        c_int, 'active_mask', # number of the layer to render
+        c_int, 'uid',        # shape keyblock unique id reference
+        c_char, 'name[64]',  # layer name, MAX_CUSTOMDATA_LAYER_NAME
+        c_void, '*data',     # layer data
+    )
+
+
 class CustomData(Structure):
     _fields_ = fields(
-        c_void, '*layers',  # CustomDataLayer  # CustomDataLayers, ordered by type
+        CustomDataLayer, '*layers',  # CustomDataLayers, ordered by type
         c_int, 'typemap[42]',  # runtime only! - maps types to indices of first layer of that type,
                                # MUST be >= CD_NUMTYPES, but we cant use a define here.
                                # Correct size is ensured in CustomData_update_typemap assert()
@@ -1313,23 +1328,14 @@ class BMFace(Structure):
 
 class BMesh(Structure):
     _fields_ = fields(
-        c_int, 'totvert',
-        c_int, 'totedge',
-        c_int, 'totloop',
-        c_int, 'totface',
-
-        c_int, 'totvertsel',
-        c_int, 'totedgesel',
-        c_int, 'totfacesel',
+        c_int, 'totvert', 'totedge', 'totloop', 'totface',
+        c_int, 'totvertsel', 'totedgesel', 'totfacesel',
 
         c_char, 'elem_index_dirty',
 
         c_char, 'elem_table_dirty',
 
-        c_void_p, 'vpool',  # BLI_mempool
-        c_void_p, 'epool',  # BLI_mempool
-        c_void_p, 'lpool',  # BLI_mempool
-        c_void_p, 'fpool',  # BLI_mempool
+        c_void, '*vpool', '*epool', '*lpool', '*fpool',  # BLI_mempool
 
         BMVert, '**vtable',
         BMEdge, '**etable',
@@ -1338,6 +1344,13 @@ class BMesh(Structure):
         c_int, 'vtable_tot',
         c_int, 'etable_tot',
         c_int, 'ftable_tot',
+
+        c_void, '*vtoolflagpool', '*etoolflagpool', '*ftoolflagpool',  # struct BLI_mempool
+
+        c_int, 'toolflag_index',
+        c_void, '*currentop',  # struct BMOperator
+
+        CustomData, 'vdata', 'edata', 'ldata', 'pdata',
     )
 
 
