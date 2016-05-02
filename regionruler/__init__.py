@@ -723,11 +723,17 @@ def region_drawing_rectangle(context, area, region):
     ymax = region.height - 1
 
     # render info
+    has_render_info = False
     if context.area.type == 'IMAGE_EDITOR':
         image = context.area.spaces.active.image
         if image and image.type == 'RENDER_RESULT':
-            dpi = context.user_preferences.system.dpi
-            ymax -= get_widget_unit(context)
+            has_render_info = True
+    elif context.area.type == 'VIEW_3D':
+        if context.space_data.viewport_shade == 'RENDERED':
+            has_render_info = True
+    if has_render_info:
+        dpi = context.user_preferences.system.dpi
+        ymax -= get_widget_unit(context)
 
     if not context.user_preferences.system.use_region_overlap:
         return 0, ymin, region.width - 1, ymax
