@@ -258,6 +258,15 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
         update=_update_redraw,
     )
 
+    node_editor_unit = vap.EP(
+        'NodeEditor Unit',
+        items=(('node', 'Node',
+                'used in Node.location and SpaceNodeEditor.cursor_location'),
+               ('view2d', 'View2D', '')),
+        default='node',
+        update=_update_redraw,
+    )
+
     view_depth = vap.EP(
         'View Depth',
         "Used in 'PERSP' or 'CAMERA'",
@@ -491,7 +500,6 @@ class Data:
         # self.updated_space()で更新するもの
         self.unit_system = None  # modalmouse.UnitSystem
         self.unit_system_2d_x = self.unit_system_2d_y = None  # IMAGE_EDITOR用
-        self.unit_system_node = None
         self.view_type = 'top'
         self.sign_x = 1  # 1 or -1
         self.sign_y = 1  # 1 or -1
@@ -619,12 +627,11 @@ class Data:
             pmat = wmat * vmat
             # X,Y毎にunit_systemを作成
             image_editor_unit = ruler_settings.image_editor_unit
-            axis = 'x' if image_editor_unit == 'uv' else 'pixel_x'
+            use_view2d = image_editor_unit == 'uv'
             unit_system_2d_x = unitsystem.UnitSystem(
-                context, override, image_editor_unit=axis)
-            axis = 'y' if image_editor_unit == 'uv' else 'pixel_y'
+                context, override, axis='x', use_view2d=use_view2d)
             unit_system_2d_y = unitsystem.UnitSystem(
-                context, override, image_editor_unit=axis)
+                context, override, axis='y', use_view2d=use_view2d)
             image_sx, image_sy = unit_system.image_size
             if image_sx == 0:
                 image_sx = 256
@@ -659,7 +666,9 @@ class Data:
         else:
             override = {'grid_scale': 1.0, 'grid_subdivisions': 10,
                         'system': 'NONE'}
-            unit_system = unitsystem.UnitSystem(context, override)
+            use_view2d = ruler_settings.node_editor_unit != 'node'
+            unit_system = unitsystem.UnitSystem(context, override,
+                                                use_view2d=use_view2d)
             unit_system_2d_x = unit_system_2d_y = None
             view_type = 'top'
             sign_x = sign_y = 1
@@ -2628,6 +2637,9 @@ class VIEW3D_PT_region_ruler_base:
         elif self.bl_space_type == 'IMAGE_EDITOR':
             col = layout.column()
             col.prop(ruler_settings, 'image_editor_unit', text='Unit')
+        # elif self.bl_space_type == 'NODE_EDITOR':
+        #     col = layout.column()
+        #     col.prop(ruler_settings, 'node_editor_unit', text='Unit')
 
         if self.bl_space_type == 'VIEW_3D':
             col = layout.column()

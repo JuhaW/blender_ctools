@@ -58,7 +58,8 @@ class UnitSystem:
         elif self.system == 'IMPERIAL':
             return self.imperial_units
 
-    def __init__(self, context, override=None, image_editor_unit='x'):
+    def __init__(self, context, override=None,
+                 axis='x', use_view2d=False):
         """
         :param override: 属性取得の際にこちらを優先する。以下は有効な属性
             system, system_rotation, scale_length, use_separate,
@@ -70,7 +71,20 @@ class UnitSystem:
             'pixel_x': 画像のPixelを用いた座標でX軸を計算する
             'pixel_y': 画像のPixelを用いた座標でY軸を計算する
         :type image_editor_unit: str
+        :param axis: 'x' か 'y' を指定する。IMAGE_EDITORで有効。
+        :type axis: str
+        :param use_view2d:
+            偽の場合、IMAGE_EDITORなら画像のPixel座標系を計算する。
+            NODE_EDITORならSpaceNodeEditor.cursor_locationや
+            Node.locationで使われる座標系。
+            真の場合はView2Dの座標系を計算する。これはIMAGE_EDITORなら
+            UV座標系と一致する。
+        :type use_view2d: bool
         """
+
+        if axis not in {'x', 'y', 'X', 'Y'}:
+            raise ValueError("axis引数は'x'か'y'でないといけない")
+
         self.override = {} if override is None else override
 
         # 変数 ----------------------------------------------------------------
@@ -97,8 +111,10 @@ class UnitSystem:
         # RegionView3D.view_location
         self._view_location = Vector((0, 0, 0))
 
-        # SpaceImageEditorで計算する軸を指定する
-        self.image_editor_unit = image_editor_unit
+        # SpaceImageEditorで使用
+        self.axis = axis
+        # SpaceImageEditorとSpaceNodeEditorで使用
+        self.use_view2d = use_view2d
 
         # 計算結果 ------------------------------------------------------------
         # dpbuとunit_powはsystemに影響されない
@@ -243,56 +259,59 @@ class UnitSystem:
             v1 = vav.project_v3(sx, sy, persmat, view_location)
             v2 = vav.project_v3(sx, sy, persmat, view_location + v)
             dpbu = dx = (v1 - v2).to_2d().length
+
         elif context.area.type == 'IMAGE_EDITOR':
-            image_editor_unit = self.image_editor_unit.lower()
+            axis = self.axis.lower()
             for region in context.area.regions:
                 if region.type == 'WINDOW':
                     break
             v2d = region.view2d
             v1 = v2d.region_to_view(0, 0)
-            if image_editor_unit in ('pixel_x', 'x'):
+            if axis == 'x':
                 v2 = v2d.region_to_view(region.width, 0)
                 bupd = (v2[0] - v1[0]) / region.width
-                if image_editor_unit == 'pixel_x':
+                if not self.use_view2d:
                     image_sx = self.image_size[0]
                     if image_sx == 0:
                         image_sx = 256  # blenderの仕様。Imageが無い場合は256になる
                     bupd *= image_sx
-            else:  # 'pixel_y', 'y':
+            else:
                 v2 = v2d.region_to_view(0, region.height)
                 bupd = (v2[1] - v1[1]) / region.height
-                if image_editor_unit == 'pixel_y':
+                if not self.use_view2d:
                     image_sy = self.image_size[1]
                     if image_sy == 0:
                         image_sy = 256
                     bupd *= image_sy
             dpbu = dx = 1.0 / bupd
+
         elif context.area.type == 'NODE_EDITOR':
-            # view2dでは値が一致しない
-            space = context.area.spaces.active
-            cursor_bak = space.cursor_location[:]
-            space.cursor_location_from_region(0, 0)
-            v1 = space.cursor_location[:]
-            if region.width > region.height:  # 誤差を少しでも減らすため
-                space.cursor_location_from_region(region.width, 0)
-                v2 = space.cursor_location
-                bupd = (v2[0] - v1[0]) / region.width
+            if self.use_view2d:
+                v2d = region.view2d
+                v1 = v2d.region_to_view(0, 0)
+                if region.width > region.height:  # 誤差を少しでも減らすため
+                    v2 = v2d.region_to_view(region.width, 0)
+                    bupd = (v2[0] - v1[0]) / region.width
+                else:
+                    v2 = v2d.region_to_view(0, region.height)
+                    bupd = (v2[1] - v1[1]) / region.height
             else:
-                space.cursor_location_from_region(0, region.height)
-                v2 = space.cursor_location
-                bupd = (v2[1] - v1[1]) / region.height
-            space.cursor_location = cursor_bak
+                # view2dでは値が一致しない
+                space = context.area.spaces.active
+                cursor_bak = space.cursor_location[:]
+                space.cursor_location_from_region(0, 0)
+                v1 = space.cursor_location[:]
+                if region.width > region.height:  # 誤差を少しでも減らすため
+                    space.cursor_location_from_region(region.width, 0)
+                    v2 = space.cursor_location
+                    bupd = (v2[0] - v1[0]) / region.width
+                else:
+                    space.cursor_location_from_region(0, region.height)
+                    v2 = space.cursor_location
+                    bupd = (v2[1] - v1[1]) / region.height
+                space.cursor_location = cursor_bak
             dpbu = dx = 1.0 / bupd
-        elif context.region.view2d:
-            v2d = region.view2d
-            v1 = v2d.region_to_view(0, 0)
-            if region.width > region.height:  # 誤差を少しでも減らすため
-                v2 = v2d.region_to_view(region.width, 0)
-                bupd = (v2[0] - v1[0]) / region.width
-            else:
-                v2 = v2d.region_to_view(0, region.height)
-                bupd = (v2[1] - v1[1]) / region.height
-            dpbu = dx = 1.0 / bupd
+
         else:
             raise ValueError()
 
