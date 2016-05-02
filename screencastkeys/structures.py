@@ -35,12 +35,13 @@
 """
 
 
-import re
-import platform
 import ctypes
 from ctypes import CDLL, Structure, Union, POINTER, cast, \
     c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
     py_object, c_ssize_t, c_uint, c_int8, c_uint8, CFUNCTYPE
+import numpy as np
+import platform
+import re
 
 import bpy
 
@@ -1388,6 +1389,231 @@ class BMWalker(Structure):
 
 
 ###############################################################################
+# Python Header
+###############################################################################
+class PyObject_HEAD(ctypes.Structure):
+    _fields_ = [
+        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
+        ('ob_refcnt', ctypes.c_ssize_t),
+        ('ob_type', ctypes.c_void_p),
+    ]
+
+class PyObject_VAR_HEAD(ctypes.Structure):
+    _fields_ = [
+        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
+        ('ob_refcnt', ctypes.c_ssize_t),
+        ('ob_type', ctypes.c_void_p),
+        ('ob_size', ctypes.c_ssize_t),
+    ]
+
+
+###############################################################################
+# PropertyRNA
+###############################################################################
+class _PointerRNA_id(Structure):
+    """makesrna/RNA_types.h"""
+    _fields_ = fields(
+        c_void_p, 'data',
+    )
+
+
+class PointerRNA(Structure):
+    """makesrna/RNA_types.h"""
+    _fields_ = fields(
+        _PointerRNA_id, 'id',
+        c_void_p, 'type',  # <StructRNA>
+        c_void_p, 'data',
+    )
+
+
+RNA_MAX_ARRAY_DIMENSION = 3  # rna_internal_types.h: 54
+
+
+class PropertyRNA(Structure):
+    """rna_internal_types.h: 155"""
+
+PropertyRNA._fields_ = fields(
+    PropertyRNA, '*next', '*prev',
+
+    # magic bytes to distinguish with IDProperty
+    c_int, 'magic',
+
+    # unique identifier
+    c_char, '*identifier',  # <const char>
+    # various options
+    c_int, 'flag',
+
+    # user readable name
+    c_char, '*name',  # <const char>
+    # single line description, displayed in the tooltip for example
+    c_char, '*description',  # <const char>
+    # icon ID
+    c_int, 'icon',
+    # context for translation
+    c_char, '*translation_context',  # <const char>
+
+    # property type as it appears to the outside
+    c_int, 'type',  # <enum: PropertyType>
+    # subtype, 'interpretation' of the property
+    c_int, 'subtype',  # <enum: PropertySubType>
+    # if non-NULL, overrides arraylength. Must not return 0?
+    c_void_p, 'getlength',  # <PropArrayLengthGetFunc>
+    # dimension of array
+    c_uint, 'arraydimension',  # <unsigned int>
+    # array lengths lengths for all dimensions (when arraydimension > 0)
+    c_uint, 'arraylength[3]',  # <unsigned int> arraylength[RNA_MAX_ARRAY_DIMENSION]
+    c_uint, 'totarraylength',  # <unsigned int>
+
+    # callback for updates on change
+    c_void_p, 'update',  # <UpdateFunc>
+    c_int, 'noteflag',
+
+    # callback for testing if editable
+    c_void_p, 'editable',  # <EditableFunc>
+    # callback for testing if array-item editable (if applicable)
+    c_void_p, 'itemeditable',  # <ItemEditableFunc>
+
+    # raw access
+    c_int, 'rawoffset',
+    c_int, 'rawtype',  # <enum: RawPropertyType>
+
+    # This is used for accessing props/functions of this property
+    # any property can have this but should only be used for collections and arrays
+    # since python will convert int/bool/pointer's
+    c_void, '*srna',  # <StructRNA>  # attributes attached directly to this collection
+
+    # python handle to hold all callbacks
+    # * (in a pointer array at the moment, may later be a tuple)
+    c_void, '*py_data',
+    )
+
+
+class FloatPropertyRNA(Structure):
+    """rna_internal_types.h: 252"""
+
+
+PropFloatGetFunc = CFUNCTYPE(c_float, POINTER(PointerRNA))
+PropFloatSetFunc = CFUNCTYPE(c_int, POINTER(PointerRNA), c_float)
+PropFloatArrayGetFunc = CFUNCTYPE(c_int, POINTER(PointerRNA), POINTER(c_float))
+PropFloatArraySetFunc = CFUNCTYPE(c_int, POINTER(PointerRNA), POINTER(c_float))
+PropFloatRangeFunc = CFUNCTYPE(c_int, POINTER(PointerRNA),
+                               c_float, c_float, c_float, c_float)
+
+FloatPropertyRNA._fields_ = fields(
+    PropertyRNA, 'property',
+
+    PropFloatGetFunc, 'get',
+    PropFloatSetFunc, 'set',
+    PropFloatArrayGetFunc, 'getarray',
+    PropFloatArraySetFunc, 'setarray',
+    PropFloatRangeFunc, 'range',
+
+    # PropFloatGetFuncEx, 'get_ex',
+    # PropFloatSetFuncEx, 'set_ex',
+    # PropFloatArrayGetFuncEx, 'getarray_ex',
+    # PropFloatArraySetFuncEx, 'setarray_ex',
+    # PropFloatRangeFuncEx, 'range_ex',
+    #
+    # c_float, 'softmin', 'softmax',
+    # c_float, 'hardmin', 'hardmax',
+    # c_float, 'step',
+    # c_int, 'precision',
+    #
+    # c_float, 'defaultvalue',
+    # c_float, '*defaultarray',   # <cost float>
+)
+
+
+class BPy_PropertyRNA(Structure):
+    """python/intern/bpy_rna.h"""
+    _fields_ = fields(
+        PyObject_HEAD, 'head',
+        PointerRNA, 'ptr',
+        PropertyRNA, '*prop',
+    )
+
+
+class BPy_PropertyArrayRNA(Structure):
+    """python/intern/bpy_rna.h"""
+    _fields_ = fields(
+        PyObject_HEAD, 'head',
+        PointerRNA, 'ptr',
+        PropertyRNA, '*prop',
+        c_int, 'arraydim',
+        c_int, 'arrayoffset',
+    )
+
+
+def RNA_property_float_get_array(ptr, prop, values):
+    """
+    :param ptr: PointerRNA *ptr
+    :type ptr: POINTER(PointerRNA)
+    :param prop: PropertyRNA *prop
+    :type prop: POINTER(PropertyRNA)
+    :param values: float *values
+    :type values: POINTER(c_float)
+    """
+    fprop = cast(prop, POINTER(FloatPropertyRNA)).contents
+    fprop.getarray(ptr, cast(values, POINTER(c_float)))
+
+
+def RNA_property_float_set_array(ptr, prop, values):
+    """
+    :param ptr: PointerRNA *ptr
+    :type ptr: POINTER(PointerRNA)
+    :param prop: PropertyRNA *prop
+    :type prop: POINTER(PropertyRNA)
+    :param values: float *values
+    :type values: POINTER(c_float)
+    """
+    fprop = cast(prop, POINTER(FloatPropertyRNA)).contents
+    fprop.setarray(ptr, cast(values, POINTER(c_float)))
+
+
+def image_pixels_get(image):
+    """Image.pixelsをnumpy.ndarrayとして返す。
+    :type image: bpy.types.Image
+    :return: 要素の型はfloat32でshapeは(row, col)。
+    :rtype: numpy.ndarray
+    """
+
+    if not isinstance(image, bpy.types.Image):
+        raise TypeError()
+
+    image_pixels = image.pixels  # インスタンスは終わるまで残しとかないと駄目
+    addr = id(image_pixels)
+    bpy_prop = cast(c_void_p(addr), POINTER(BPy_PropertyArrayRNA)).contents
+    ptr = cast(c_void_p(ctypes.addressof(bpy_prop.ptr)), POINTER(PointerRNA))
+    prop = bpy_prop.prop
+    pixels = np.zeros(len(image.pixels), dtype=np.float32)
+    RNA_property_float_get_array(ptr, prop, c_void_p(pixels.ctypes.data))
+    return pixels
+
+
+def image_pixels_set(image, pixels):
+    """Image.pixelsをpixelsで上書きする。
+    :type image: bpy.types.Image
+    :param pixels: 要素の型はfloat32にしておく必要がある。それ以外だと変換される。
+        要素数の確認は行わないので注意。
+    :type pixels: numpy.ndarray
+    """
+
+    if not isinstance(image, bpy.types.Image):
+        raise TypeError()
+    if not isinstance(pixels, np.ndarray):
+        raise TypeError()
+    if pixels.dtype != np.float32:
+        pixels = pixels.astype(np.float32)
+
+    image_pixels = image.pixels
+    addr = id(image_pixels)
+    bpy_prop = cast(c_void_p(addr), POINTER(BPy_PropertyArrayRNA)).contents
+    ptr = cast(c_void_p(ctypes.addressof(bpy_prop.ptr)), POINTER(PointerRNA))
+    prop = bpy_prop.prop
+    RNA_property_float_set_array(ptr, prop, c_void_p(pixels.ctypes.data))
+
+
+###############################################################################
 def context_py_dict_get(context):
     """CTX_py_dict_get
     :type context: bpy.types.Context
@@ -1455,24 +1681,6 @@ def context_py_dict_set_linux(context, py_dict):
         # CTX_py_dict_set(C, py_object())
         CTX_py_dict_set(C, None)
     return context_dict_back
-
-
-###############################################################################
-class PyObject_HEAD(ctypes.Structure):
-    _fields_ = [
-        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
-        ('ob_refcnt', ctypes.c_ssize_t),
-        ('ob_type', ctypes.c_void_p),
-    ]
-
-
-class PyObject_VAR_HEAD(ctypes.Structure):
-    _fields_ = [
-        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
-        ('ob_refcnt', ctypes.c_ssize_t),
-        ('ob_type', ctypes.c_void_p),
-        ('ob_size', ctypes.c_ssize_t),
-    ]
 
 
 ###############################################################################
