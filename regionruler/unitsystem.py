@@ -228,7 +228,22 @@ class UnitSystem:
         self.image_size = self._get_image_size(context)
 
         # Calculate blenderUnit -----------------------------------------------
-        if context.area.type == 'IMAGE_EDITOR':
+        if context.area.type == 'VIEW_3D':
+            rv3d = context.region_data
+            if rv3d is None:
+                return False
+
+            # viewinvmat = rv3d.view_matrix.inverted()
+            persmat = rv3d.perspective_matrix
+            pimat = persmat.to_3x3().inverted()
+            if sx >= sy:  # この分岐に大した意味は無い
+                v = pimat.col[0].normalized()  # viewのx方向で長さが1bu
+            else:
+                v = pimat.col[1].normalized()  # viewのy方向で長さが1bu
+            v1 = vav.project_v3(sx, sy, persmat, view_location)
+            v2 = vav.project_v3(sx, sy, persmat, view_location + v)
+            dpbu = dx = (v1 - v2).to_2d().length
+        elif context.area.type == 'IMAGE_EDITOR':
             image_editor_unit = self.image_editor_unit.lower()
             for region in context.area.regions:
                 if region.type == 'WINDOW':
@@ -252,22 +267,34 @@ class UnitSystem:
                         image_sy = 256
                     bupd *= image_sy
             dpbu = dx = 1.0 / bupd
-
-        else:
-            rv3d = context.region_data
-            if rv3d is None:
-                return False
-
-            # viewinvmat = rv3d.view_matrix.inverted()
-            persmat = rv3d.perspective_matrix
-            pimat = persmat.to_3x3().inverted()
-            if sx >= sy:  # この分岐に大した意味は無い
-                v = pimat.col[0].normalized()  # viewのx方向で長さが1bu
+        elif context.area.type == 'NODE_EDITOR':
+            # view2dでは値が一致しない
+            space = context.area.spaces.active
+            cursor_bak = space.cursor_location[:]
+            space.cursor_location_from_region(0, 0)
+            v1 = space.cursor_location[:]
+            if region.width > region.height:  # 誤差を少しでも減らすため
+                space.cursor_location_from_region(region.width, 0)
+                v2 = space.cursor_location
+                bupd = (v2[0] - v1[0]) / region.width
             else:
-                v = pimat.col[1].normalized()  # viewのy方向で長さが1bu
-            v1 = vav.project_v3(sx, sy, persmat, view_location)
-            v2 = vav.project_v3(sx, sy, persmat, view_location + v)
-            dpbu = dx = (v1 - v2).to_2d().length
+                space.cursor_location_from_region(0, region.height)
+                v2 = space.cursor_location
+                bupd = (v2[1] - v1[1]) / region.height
+            space.cursor_location = cursor_bak
+            dpbu = dx = 1.0 / bupd
+        elif context.region.view2d:
+            v2d = region.view2d
+            v1 = v2d.region_to_view(0, 0)
+            if region.width > region.height:  # 誤差を少しでも減らすため
+                v2 = v2d.region_to_view(region.width, 0)
+                bupd = (v2[0] - v1[0]) / region.width
+            else:
+                v2 = v2d.region_to_view(0, region.height)
+                bupd = (v2[1] - v1[1]) / region.height
+            dpbu = dx = 1.0 / bupd
+        else:
+            raise ValueError()
 
         sublines = self.grid_subdivisions
         unit_pow = 0

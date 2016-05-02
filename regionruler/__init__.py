@@ -96,6 +96,7 @@ KEEP_MODAL_HANDLERS_HEAD = False
 # 数値の縁取り
 VIEW_3D_NUMBER_OUTLINE = False
 IMAGE_EDITOR_NUMBER_OUTLINE = True
+NODE_EDITOR_NUMBER_OUTLINE = False
 OUTLINE_RADIUS = 5  # 0, 3, 5
 
 # プラットフォームにより2.0の場合あり
@@ -268,7 +269,8 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
 
 space_prop = utils.SpaceProperty(
     [bpy.types.SpaceView3D, 'region_ruler', RegionRuler_PG],
-    [bpy.types.SpaceImageEditor, 'region_ruler', RegionRuler_PG]
+    [bpy.types.SpaceImageEditor, 'region_ruler', RegionRuler_PG],
+    [bpy.types.SpaceNodeEditor, 'region_ruler', RegionRuler_PG]
 
 )
 
@@ -484,10 +486,12 @@ class Data:
         # draw callback handler
         self.handle = None  # VIEW_3D
         self.handle_image = None  # IMAGE_EDITOR
+        self.handle_node = None  # NODE_EDITOR
 
         # self.updated_space()で更新するもの
         self.unit_system = None  # modalmouse.UnitSystem
         self.unit_system_2d_x = self.unit_system_2d_y = None  # IMAGE_EDITOR用
+        self.unit_system_node = None
         self.view_type = 'top'
         self.sign_x = 1  # 1 or -1
         self.sign_y = 1  # 1 or -1
@@ -536,7 +540,8 @@ class Data:
         for screen in bpy.data.screens:
             for area in screen.areas:
                 for space in area.spaces:
-                    if space.type in ('VIEW_3D', 'IMAGE_EDITOR'):
+                    if space.type in ('VIEW_3D', 'IMAGE_EDITOR',
+                                      'NODE_EDITOR'):
                         address = space.as_pointer()
                         if address in self.spaces:
                             value = self.spaces[address]
@@ -602,7 +607,7 @@ class Data:
                        sign_x * (-orig[0] + halfx)]
             range_y = [sign_y * (-orig[1] - halfy),
                        sign_y * (-orig[1] + halfy)]
-        else:
+        elif context.area.type == 'IMAGE_EDITOR':
             override = {'grid_scale': 1.0,
                         'grid_subdivisions': 10,
                         'system': 'NONE'}
@@ -651,6 +656,22 @@ class Data:
                 bupd = unit_system_2d_y.bupd
                 orig = vav.project_v3(sx, sy, pmat, uv_co) * bupd
                 range_y = [-orig[1], -orig[1] + sy * bupd]
+        else:
+            override = {'grid_scale': 1.0, 'grid_subdivisions': 10,
+                        'system': 'NONE'}
+            unit_system = unitsystem.UnitSystem(context, override)
+            unit_system_2d_x = unit_system_2d_y = None
+            view_type = 'top'
+            sign_x = sign_y = 1
+            vmat = Matrix(glsettings.modelview_matrix).transposed()
+            wmat = Matrix(glsettings.projection_matrix).transposed()
+            pmat = wmat * vmat
+            bupd = unit_system.bupd
+            co = Vector((0, 0, 0))
+            orig = vav.project_v3(sx, sy, pmat, co) * bupd
+            range_x = [-orig[0], -orig[0] + sx * bupd]
+            orig = vav.project_v3(sx, sy, pmat, co) * bupd
+            range_y = [-orig[1], -orig[1] + sy * bupd]
 
         # Mouse
         if event:
@@ -707,7 +728,7 @@ def is_modal_needed(context):
 def redraw_regions(context, region_types={'WINDOW', 'UI'}, window=None):
     win = window or context.window
     for area in win.screen.areas:
-        if area.type in ('VIEW_3D', 'IMAGE_EDITOR'):
+        if area.type in ('VIEW_3D', 'IMAGE_EDITOR', 'NODE_EDITOR'):
             for region in area.regions:
                 if not region_types or region.type in region_types:
                     region.tag_redraw()
@@ -719,8 +740,14 @@ def region_drawing_rectangle(context, area, region):
     :return (xmin, ymin, xmax, ymax)
     :rtype (int, int, int, int)
     """
+    xmax = region.width - 1
     ymin = 0
     ymax = region.height - 1
+
+    # right scroll bar
+    if context.area.type == 'NODE_EDITOR':
+        # V2D_SCROLLER_HANDLE_SIZE 等を参照。+1は誤差修正用
+        xmax -= int(get_widget_unit(context) * 0.8) + 1
 
     # render info
     has_render_info = False
@@ -736,7 +763,7 @@ def region_drawing_rectangle(context, area, region):
         ymax -= get_widget_unit(context)
 
     if not context.user_preferences.system.use_region_overlap:
-        return 0, ymin, region.width - 1, ymax
+        return 0, ymin, xmax, ymax
 
     # Regionが非表示ならidが0。
     # その際、通常はwidth若しくはheightが1になっている。
@@ -813,6 +840,7 @@ def draw_font_context(context, font_id, text, outline=False,
                       outline_color=None):
     area = context.area
     enable = (area.type == 'IMAGE_EDITOR' and IMAGE_EDITOR_NUMBER_OUTLINE or
+              area.type == 'NODE_EDITOR' and NODE_EDITOR_NUMBER_OUTLINE or
               area.type == 'VIEW_3D' and VIEW_3D_NUMBER_OUTLINE)
     if enable and outline and outline_color:
         draw_font(font_id, text, outline_color)
@@ -1499,14 +1527,7 @@ def draw_unit_box(context, use_fill):
     重なる事を避ける為表示位置は変えない)
     """
     prefs = RegionRulerPreferences.get_prefs()
-    if context.area.type == 'IMAGE_EDITOR':
-        fx = data.unit_system_2d_x.bupg
-        fy = data.unit_system_2d_y.bupg
-        if fx == fy:
-            text = '{:g}'.format(fx)
-        else:
-            text = '{:g}, {:g}'.format(fx, fy)
-    else:
+    if context.area.type == 'VIEW_3D':
         unit_system = data.unit_system
         if unit_system.system == 'NONE':
             text = '{:g}'.format(unit_system.bupg)
@@ -1526,6 +1547,16 @@ def draw_unit_box(context, use_fill):
                     text = '1' + unit.symbol_alt  # feetとinchが見にくいため
                 else:
                     text = '1' + unit.symbol
+    elif context.area.type == 'IMAGE_EDITOR':
+        fx = data.unit_system_2d_x.bupg
+        fy = data.unit_system_2d_y.bupg
+        if fx == fy:
+            text = '{:g}'.format(fx)
+        else:
+            text = '{:g}, {:g}'.format(fx, fy)
+    else:
+        f = data.unit_system.bupg
+        text = '{:g}'.format(f)
 
     area = context.area
     region = context.region
@@ -2040,10 +2071,10 @@ def draw_mouse_coordinates(context, event, use_fill):
     set_model_view_z(90)
 
     # X-Axis (Top)
-    if area.type == 'VIEW_3D':
-        unit_system = data.unit_system
-    else:
+    if area.type == 'IMAGE_EDITOR':
         unit_system = data.unit_system_2d_x
+    else:
+        unit_system = data.unit_system
     text = make_mouse_coordinate_label(context, unit_system, data.mval[0])
     tw, _ = blf.dimensions(font.id, text)
     boxw = tw + font.margin * 2
@@ -2089,10 +2120,10 @@ def draw_mouse_coordinates(context, event, use_fill):
     set_model_view_z(80)
 
     # Y-Axis (Right)
-    if area.type == 'VIEW_3D':
-        unit_system = data.unit_system
-    else:
+    if area.type == 'IMAGE_EDITOR':
         unit_system = data.unit_system_2d_y
+    else:
+        unit_system = data.unit_system
     text = make_mouse_coordinate_label(context, unit_system, data.mval[1])
     text_lines = text.split(' ')
     tw = max([blf.dimensions(font.id, t)[0] for t in text_lines])
@@ -2175,7 +2206,7 @@ def draw_callback(context):
 
     data.updated_space(context, glsettings)
 
-    if context.area.type == 'IMAGE_EDITOR':
+    if context.area.type in ('IMAGE_EDITOR', 'NODE_EDITOR'):
         cm = glsettings.region_pixel_space().enter()
 
     bgl.glColorMask(1, 1, 1, 1)
@@ -2222,7 +2253,7 @@ def draw_callback(context):
 
         draw_region_rulers(context)
 
-    if context.area.type == 'IMAGE_EDITOR':
+    if context.area.type in ('IMAGE_EDITOR', 'NODE_EDITOR'):
         cm.exit()
     glsettings.pop()
     glsettings.font_size()
@@ -2239,6 +2270,11 @@ def draw_handler_add(context):
             draw_callback, (context,), 'WINDOW', 'POST_VIEW')
         msg = "SpaceImageEditor.draw_handler_add(..., 'WINDOW', 'POST_VIEW')"
         logger.debug(msg)
+    if not data.handle_node:
+        data.handle_node = bpy.types.SpaceNodeEditor.draw_handler_add(
+            draw_callback, (context,), 'WINDOW', 'POST_VIEW')
+        msg = "SpaceNodeEditor.draw_handler_add(..., 'WINDOW', 'POST_VIEW')"
+        logger.debug(msg)
 
 
 def draw_handler_remove():
@@ -2251,6 +2287,11 @@ def draw_handler_remove():
             data.handle_image, 'WINDOW')
         data.handle_image = None
         logger.debug("SpaceImageEditor.draw_handler_remove(..., 'WINDOW')")
+    if data.handle_node:
+        bpy.types.SpaceNodeEditor.draw_handler_remove(data.handle_node,
+            'WINDOW')
+        data.handle_node = None
+        logger.debug("SpaceNodeEditor.draw_handler_remove(..., 'WINDOW')")
 
 
 ###############################################################################
@@ -2451,7 +2492,8 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
             for win in wm.windows:
                 if win.as_pointer() == data.active_window:
                     for area in win.screen.areas:
-                        if area.type in ('VIEW_3D', 'IMAGE_EDITOR'):
+                        if area.type in ('VIEW_3D', 'IMAGE_EDITOR',
+                                         'NODE_EDITOR'):
                             space = area.spaces.active
                             if data.spaces[space.as_pointer()]['enable']:
                                 for region in area.regions:
@@ -2475,7 +2517,8 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
 
         # 再描画: active region
         area, region = vawm.mouse_area_region(event.mco, find_reverse=True)
-        if area and area.type not in ('VIEW_3D', 'IMAGE_EDITOR'):
+        if area and area.type not in ('VIEW_3D', 'IMAGE_EDITOR',
+                                      'NODE_EDITOR'):
             area = None
         if area:
             space = area.spaces.active
@@ -2490,7 +2533,8 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
         # 再描画: prev region
         prev_region = vawm.region_from_id(data.prev_region_id, context.screen)
         prev_area = vawm.get_area_from_data(prev_region)
-        if prev_area and prev_area.type not in ('VIEW_3D', 'IMAGE_EDITOR'):
+        if prev_area and prev_area.type not in ('VIEW_3D', 'IMAGE_EDITOR',
+                                                'NODE_EDITOR'):
             prev_area = None
         if prev_area and prev_region and prev_region != region:
             space = prev_area.spaces.active
@@ -2581,7 +2625,7 @@ class VIEW3D_PT_region_ruler_base:
         if self.bl_space_type == 'VIEW_3D':
             col = layout.column()
             col.prop(ruler_settings, 'unit', text='Unit')
-        else:
+        elif self.bl_space_type == 'IMAGE_EDITOR':
             col = layout.column()
             col.prop(ruler_settings, 'image_editor_unit', text='Unit')
 
@@ -2590,7 +2634,7 @@ class VIEW3D_PT_region_ruler_base:
             col.prop(ruler_settings, 'origin_type', text='Origin')
             if ruler_settings.origin_type == 'custom':
                 col.prop(ruler_settings, 'origin_location', text='')
-        else:
+        elif self.bl_space_type == 'IMAGE_EDITOR':
             col = layout.column()
             col.prop(ruler_settings, 'image_editor_origin_type', text='Origin')
             if ruler_settings.image_editor_origin_type == 'custom':
@@ -2641,6 +2685,16 @@ class VIEW3D_PT_region_ruler_image(VIEW3D_PT_region_ruler_base,
     @classmethod
     def poll(cls, context):
         return context.area and context.area.type == 'IMAGE_EDITOR'
+
+
+class VIEW3D_PT_region_ruler_node(VIEW3D_PT_region_ruler_base,
+                                  bpy.types.Panel):
+
+    bl_space_type = 'NODE_EDITOR'
+
+    @classmethod
+    def poll(cls, context):
+        return context.area and context.area.type == 'NODE_EDITOR'
 
 
 ###############################################################################
@@ -2751,7 +2805,7 @@ def load_post_handler(dummy):
     for space in (space for screen in bpy.data.screens
                   for area in screen.areas
                   for space in area.spaces
-                  if space.type in {'VIEW_3D', 'IMAGE_EDITOR'}):
+                  if space.type in {'VIEW_3D', 'IMAGE_EDITOR', 'NODE_EDITOR'}):
         prop = space_prop.get(space, 'region_ruler')
         if prop.enable:
             add_callback = True
@@ -2790,6 +2844,7 @@ classes = [
     VIEW3D_OT_region_ruler_terminate,
     VIEW3D_PT_region_ruler,
     VIEW3D_PT_region_ruler_image,
+    VIEW3D_PT_region_ruler_node,
 ]
 
 
