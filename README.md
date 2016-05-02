@@ -28,7 +28,7 @@
 ![Image](images/quad.jpg)
 
 ## [Region Ruler](https://github.com/chromoly/regionruler 'Region Ruler')
-3DViewとImageEditorにRulerを表示する。  
+3DView、ImageEditor、NodeEditorにRulerを表示する。
 ![Image](images/ruler.jpg))
 
 ## [Screencast Keys Mod](https://github.com/chromoly/blender-ScreencastKeysMod 'Screencast Keys Mod')

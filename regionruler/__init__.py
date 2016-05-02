@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Region Ruler',
     'author': 'chromoly',
-    'version': (2, 3),
+    'version': (2, 4),
     'blender': (2, 77, 0),
     'location': 'View3D > Properties, ImageEditor > Properties',
     'description': '',
@@ -31,7 +31,7 @@ bl_info = {
 
 
 """
-View3DとImageEditorにRulerを表示。
+View3D、ImageEditor、NodeEditorにRulerを表示。
 
 Measureボタンで簡易的な距離、角度の計測が出来る。Shift+左クリックでポインタ
 追加、右クリックで削除、Shift+右ドラッグで移動、Measureボタンをもう一度押すか
