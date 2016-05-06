@@ -678,7 +678,7 @@ class MESH_OT_intersect_cutoff(GrabCursor, bpy.types.Operator):
         if self.redo_keymap_items:
             text += ', Redo ({})'.format(kmi_to_str(self.redo_keymap_items[0]))
 
-        text += ', mco: [{}, {}]'.format(int(self.mco[0]), int(self.mco[1]))
+        # text += ', mco: [{}, {}]'.format(int(self.mco[0]), int(self.mco[1]))
         context.area.header_text_set(text)
 
     def header_text_clear(self, context):
