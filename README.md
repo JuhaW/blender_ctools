@@ -42,6 +42,10 @@
 現在アクティブなAreaとRegionで有効なショートカットの一覧を標準出力かTextへ出力する。
 ![Image](images/listvalidkeys.jpg)
 
+## Quick Boolean
+四角形、円形等でメッシュを切り抜く。ObjctModeとEditModeで利用可。
+![Image](images/quickboolean.jpg)
+
 ## その他
 ### patch/ui_layout_box.patch
 alignが真の状態のUILayoutでbox描画に不具合が起こる問題を修正するパッチ。  

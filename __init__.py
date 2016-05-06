@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'CTools',
     'author': 'chromoly',
-    'version': (1, 1),
+    'version': (1, 2),
     'blender': (2, 77, 0),
     'location': '',
     'description': 'Collection of add-ons',
@@ -46,6 +46,7 @@ import zipfile
 import bpy
 
 try:
+    importlib.reload(quickboolean)
     importlib.reload(drawnearest)
     importlib.reload(lockcoords)
     importlib.reload(lockcursor3d)
@@ -57,6 +58,7 @@ try:
     importlib.reload(screencastkeys)
     importlib.reload(updatetag)
 except NameError:
+    from . import quickboolean
     from . import drawnearest
     from . import lockcoords
     from . import lockcursor3d
@@ -73,6 +75,7 @@ UPDATE_DRY_RUN = False
 UPDATE_DIFF_TEXT = False
 
 sub_modules = [
+    quickboolean,
     drawnearest,
     lockcoords,
     lockcursor3d,
