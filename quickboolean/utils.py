@@ -426,6 +426,10 @@ class AddonKeyMapUtility:
         for c in classes:
             c.register_class()
 
+        c = super()
+        if hasattr(c, 'register'):
+            c.register()
+
     @classmethod
     def unregister(cls):
         """注意事項はregisterと同じ"""
@@ -438,6 +442,10 @@ class AddonKeyMapUtility:
                    ]
         for c in classes[::-1]:
             c.unregister_class()
+
+        c = super()
+        if hasattr(c, 'register'):
+            c.register()
 
     @staticmethod
     def __reversed_keymap_table():
