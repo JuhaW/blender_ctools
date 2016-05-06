@@ -44,10 +44,16 @@ class AddonPreferences:
     def register(cls):
         if '.' in __package__:
             cls.get_prefs()
+        c = super()
+        if hasattr(c, 'register'):
+            c.register()
 
     @classmethod
     def unregister(cls):
         cls._module.clear()
+        c = super()
+        if hasattr(c, 'unregister'):
+            c.unregister()
 
 
 class SpaceProperty:
@@ -444,8 +450,8 @@ class AddonKeyMapUtility:
             c.unregister_class()
 
         c = super()
-        if hasattr(c, 'register'):
-            c.register()
+        if hasattr(c, 'unregister'):
+            c.unregister()
 
     @staticmethod
     def __reversed_keymap_table():
