@@ -21,8 +21,8 @@
 
 bl_info = {
     "name": "Screencast Keys Mod",
-    "author": "Paulo Gomes, Bart Crouch, John E. Herrenyo, Gaia Clary, Pablo Vazquez, chromoly",
-    "version": (1, 7, 4),
+    "author": "Paulo Gomes, Bart Crouch, John E. Herrenyo, Gaia Clary, Pablo Vazquez, chromoly, Nutti",
+    "version": (1, 8, 0),
     "blender": (2, 77, 0),
     "location": "3D View > Properties Panel > Screencast Keys",
     "warning": "",
@@ -1164,7 +1164,7 @@ def draw_callback_px(cls, context):
         return
     window = context.window
     space = context.space_data
-    if window != cls.window or space != cls.space:
+    if window != cls.window:
         return
     # pos_x, pos_y = get_display_location(context)
     # if pos_x == pos_y == -1:
@@ -1182,6 +1182,19 @@ def invoke_callback(context, event, dst, src):
 mm = ModalHandlerManager('view3d.screencast_keys', callback=invoke_callback)
 
 
+def get_area_on_mouse(mouse):
+    for area in bpy.context.screen.areas:
+        if area.x < mouse[0] < area.x + area.width:
+            if area.y < mouse[1] < area.y + area.height:
+                return area
+    return None
+
+
+def redraw_all_areas():
+    for area in bpy.context.screen.areas:
+        area.tag_redraw()
+
+
 class ScreencastKeysStatus(bpy.types.Operator):
     bl_idname = "view3d.screencast_keys"
     bl_label = "Screencast Keys"
@@ -1190,6 +1203,7 @@ class ScreencastKeysStatus(bpy.types.Operator):
 
     _handle = None
     _timer = None
+    _space = None
 
     events = []  # [[time, event_type, [modifier_keys, count]], ...]
     mouse_events = []  # [[time, event_type], ...]
@@ -1213,15 +1227,30 @@ class ScreencastKeysStatus(bpy.types.Operator):
         cls._timer = wm.event_timer_add(cls.TIMER_STEP, window)
 
     @classmethod
+    def switch_space(cls, context, new_space):
+        if cls._space == new_space:
+            return
+        if cls._handle is not None:
+            cls._space.draw_handler_remove(cls._handle, 'WINDOW')
+        cls._handle = new_space.draw_handler_add(draw_callback_px, (cls, context), 'WINDOW', 'POST_PIXEL')
+        cls._space = new_space
+
+    @classmethod
     def handle_add(cls, context):
-        cls._handle = bpy.types.SpaceView3D.draw_handler_add(
+        pref = ScreenCastKeysPreferences.get_prefs()
+        if pref.space == 'CurrentSpace':
+            space = bpy.types.SpaceView3D
+        else:
+            space = eval("bpy.types.Space" + pref.space)
+        cls._handle = space.draw_handler_add(
             draw_callback_px, (cls, context), 'WINDOW', 'POST_PIXEL')
         cls.timer_add(context, context.window)
+        cls._space = space
 
     @classmethod
     def handle_remove(cls, context):
         if cls._handle is not None:
-            bpy.types.SpaceView3D.draw_handler_remove(cls._handle, 'WINDOW')
+            cls._space.draw_handler_remove(cls._handle, 'WINDOW')
             cls._handle = None
         if cls._timer is not None:
             context.window_manager.event_timer_remove(cls._timer)
@@ -1286,6 +1315,13 @@ class ScreencastKeysStatus(bpy.types.Operator):
                         area.tag_redraw()
                         self.prev_time = time.time()
                         break
+
+        if pref.space == 'CurrentSpace':
+            new_area = get_area_on_mouse((event.mouse_x, event.mouse_y))
+            if new_area is not None:
+                new_space = new_area.spaces.active
+                self.switch_space(context, new_space)
+                redraw_all_areas()
 
         if event.type.startswith('TIMER') or ignore_event:
             # no input, so no need to change the display
@@ -1421,6 +1457,30 @@ class ScreenCastKeysPreferences(
         bpy.types.AddonPreferences):
     bl_idname = __name__
 
+    space = bpy.props.EnumProperty(
+        name="Display Space",
+        description="Display Space",
+        items=[
+            ('CurrentSpace', 'Current Space', 'Current Space'),
+            ('View3D', '3D View', '3D View'),
+            ('Timeline', 'Timeline', 'Timeline'),
+            ('GraphEditor', 'Graph Editor', 'Graph Editor'),
+            ('DopeSheetEditor', 'Dope Sheet', 'Dope Sheet'),
+            ('NLA', 'NLA Editor', 'NLA Editor'),
+            ('ImageEditor', 'Image Editor', 'Image Editor'),
+            ('SequenceEditor', 'Video Sequence Editor', 'Video Sequence Editor'),
+            ('ClipEditor', 'Movie Clip Editor', 'Movie Clip Editor'),
+            ('TextEditor', 'Text Editor', 'Text Editor'),
+            ('NodeEditor', 'Node Editor', 'Node Editor'),
+            ('LogicEditor', 'Logic Editor', 'Logic Editor'),
+            ('Properties', 'Properties', 'Properties'),
+            ('Outliner', 'Outliner', 'Outliner'),
+            ('UserPreferences', 'User Preferences', 'User Preferences'),
+            ('Info', 'Info', 'Info'),
+            ('FileBrowser', 'File Browser', 'File Browser'),
+            ('Console', 'Python Console', 'Python Console')],
+        default='CurrentSpace')
+
     pos_x = bpy.props.IntProperty(
         name="Position X",
         description="Margin on the X axis",
@@ -1530,6 +1590,11 @@ class ScreenCastKeysPreferences(
         column = split.column()
 
         sp = column.split()
+        col = sp.column()
+        sub = col.column(align=True)
+        sub.label(text="Space:")
+        sub.prop(pref, "space", text="Text")
+
         col = sp.column()
         sub = col.column(align=True)
         sub.label(text="Size:")
