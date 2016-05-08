@@ -1144,15 +1144,23 @@ class MESH_OT_intersect_cutoff(GrabCursor, bpy.types.Operator):
         bgl.glEnable(bgl.GL_BLEND)
         bgl.glColor4f(*color)
 
-        show_invert = (self.reverse and self.mouse_coords and
-                       (self.mode != 'POLYGON' or len(self.mouse_coords) > 2))
-        if show_invert:
+        show_reversed = False
+        if self.reverse:
+            if self.mode == 'POLYGON':
+                if len(self.mouse_coords) >= 3:
+                    show_reversed = True
+            else:
+                if len(self.mouse_coords) >= 2:
+                    if self.mouse_coords[0] != self.mouse_coords[1]:
+                        show_reversed = True
+        if show_reversed:
             bgl.glEnable(bgl.GL_DEPTH_TEST)
             bgl.glClearDepth(1.0)
             bgl.glClear(bgl.GL_DEPTH_BUFFER_BIT)
             bgl.glDepthMask(1)
             bgl.glColorMask(0, 0, 0, 0)
 
+        lines = []
         if self.mouse_coords:
             if self.mode == 'LINE':
                 w = region.width
@@ -1177,10 +1185,16 @@ class MESH_OT_intersect_cutoff(GrabCursor, bpy.types.Operator):
                 for co in coords:
                     bgl.glVertex2f(*co)
                 bgl.glEnd()
+                lines = self.mouse_coords
 
             elif self.mode == 'BOX':
                 p1, p2 = self.mouse_coords
                 bgl.glRectf(p1[0], p1[1], p2[0], p2[1])
+                lines = [p1,
+                         Vector((p2[0], p1[1])),
+                         Vector((p2[0], p2[1])),
+                         Vector((p1[0], p2[1])),
+                         p1]
             elif self.mode == 'CIRCLE':
                 p1, p2 = self.mouse_coords
                 bgl.glBegin(bgl.GL_TRIANGLE_FAN)
@@ -1192,6 +1206,7 @@ class MESH_OT_intersect_cutoff(GrabCursor, bpy.types.Operator):
                     bgl.glVertex2f(*co)
                 bgl.glVertex2f(*coords[0])
                 bgl.glEnd()
+                lines = coords + [coords[0]]
             elif self.mode == 'POLYGON':
                 if len(self.mouse_coords) >= 3:
                     tris = mathutils.geometry.tessellate_polygon(
@@ -1202,8 +1217,10 @@ class MESH_OT_intersect_cutoff(GrabCursor, bpy.types.Operator):
                         for i in tri:
                             bgl.glVertex2f(*self.mouse_coords[i])
                     bgl.glEnd()
+                if len(self.mouse_coords) > 1:
+                    lines = self.mouse_coords + [self.mouse_coords[0]]
 
-        if show_invert:
+        if show_reversed:
             bgl.glColorMask(1, 1, 1, 1)
             bgl.glBegin(bgl.GL_QUADS)
             bgl.glVertex3f(0, 0, -1)
@@ -1213,16 +1230,18 @@ class MESH_OT_intersect_cutoff(GrabCursor, bpy.types.Operator):
             bgl.glEnd()
             bgl.glDisable(bgl.GL_DEPTH_TEST)
 
+        bgl.glColor4f(*color[:3], 1.0)
+        bgl.glPointSize(1)
+        bgl.glLineWidth(1)
+        if len(lines) > 1:
+            bgl.glBegin(bgl.GL_LINE_STRIP)
+            for co in lines:
+                bgl.glVertex2f(*co)
+            bgl.glEnd()
         if self.mode == 'POLYGON':
-            if 1 <= len(self.mouse_coords) <= 2:
+            if len(self.mouse_coords) == 1:
                 bgl.glPointSize(5)
-                bgl.glLineWidth(3)
-                if len(self.mouse_coords) == 1:
-                    bgl.glColor4f(*color[:3], 1.0)
-                    bgl.glBegin(bgl.GL_POINTS)
-                else:
-                    bgl.glColor4f(*color[:3], 1.0)
-                    bgl.glBegin(bgl.GL_LINES)
+                bgl.glBegin(bgl.GL_POINTS)
                 for co in self.mouse_coords:
                     bgl.glVertex2f(*co)
                 bgl.glEnd()
