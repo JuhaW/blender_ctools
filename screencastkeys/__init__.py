@@ -40,7 +40,9 @@ bl_info = {
 
 """
 既知の問題点:
-    レンダリング中は全てのイベントを取得出来ない
+    レンダリング中は全てのイベントを取得出来ない。
+    scene_callback_pre で wmWindow.modalhandlersを並び替えるので
+    落ちる可能性がある。
 """
 
 
@@ -610,7 +612,10 @@ class ScreencastKeysStatus(bpy.types.Operator):
             blf.shadow(font_id, 5, *col)
             mod_names = cls.sorted_modifiers(cls.hold_keys)
             if mhm.is_rendering():
-                text = '- - -'
+                if 0:
+                    text = '- - -'
+                else:
+                    text = ''
             else:
                 text = ' + '.join(mod_names)
             blf.position(font_id, px, py, 0)
