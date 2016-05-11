@@ -80,11 +80,11 @@ class ScreenCastKeysPreferences(
 
     color = bpy.props.FloatVectorProperty(
         name='Color',
-        default=(1.0, 1.0, 1.0, 1.0),
+        default=(1.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
         subtype='COLOR_GAMMA',
-        size=4
+        size=3
     )
     color_shadow = bpy.props.FloatVectorProperty(
         name='Shadow Color',
@@ -120,15 +120,15 @@ class ScreenCastKeysPreferences(
         step=10,
         subtype='TIME'
     )
-    fade_time = bpy.props.FloatProperty(
-        name='Fade Out Time',
-        description='Time in seconds for keys to last on screen',
-        default=1.0,
-        min=0.0,
-        max=10.0,
-        step=10,
-        subtype='TIME'
-    )
+    # fade_time = bpy.props.FloatProperty(
+    #     name='Fade Out Time',
+    #     description='Time in seconds for keys to last on screen',
+    #     default=1.0,
+    #     min=0.0,
+    #     max=10.0,
+    #     step=10,
+    #     subtype='TIME'
+    # )
     show_last_operator = bpy.props.BoolProperty(
         name='Show Last Operator',
         default=False,
@@ -154,7 +154,7 @@ class ScreenCastKeysPreferences(
 
         col = split.column()
         col.prop(self, 'display_time')
-        col.prop(self, 'fade_time')
+        # col.prop(self, 'fade_time')
 
         col = split.column()
         col.prop(self, 'origin')
@@ -497,7 +497,24 @@ class ScreencastKeysStatus(bpy.types.Operator):
             w = max(w, blf.dimensions(font_id, text)[0])
             h += th
 
-        return x, y, x + w, y + h
+        if 0:
+            return x, y, x + w, y + h
+        else:
+            if prefs.origin == 'WINDOW':
+                return x, y, x + w, y + h
+            else:
+                if prefs.origin == 'AREA':
+                    xmin = area.x
+                    ymin = area.y
+                    xmax = area.x + area.width
+                    ymax = area.y + area.height
+                else:
+                    xmin = region.x
+                    ymin = region.y
+                    xmax = region.x + region.width
+                    ymax = region.y + region.height
+                return (max(x, xmin), max(y, ymin),
+                        min(x + w, xmax), min(y + h, ymax))
 
     @classmethod
     def find_redraw_regions(cls, context):
@@ -531,7 +548,8 @@ class ScreencastKeysStatus(bpy.types.Operator):
         rect = cls.calc_draw_rectangle(context)
         if not rect:
             return
-        x, y, xmax, ymax = rect
+        xmin, ymin, xmax, ymax = rect
+        win, area, region, x, y = cls.get_origin(context)
         w = xmax - x
         h = ymax - y
         if w == h == 0:
@@ -539,29 +557,48 @@ class ScreencastKeysStatus(bpy.types.Operator):
         region = context.region
         min1 = (region.x, region.y)
         max1 = (region.x + region.width, region.y + region.height)
-        if not intersect_aabb(min1, max1, (x, y), (xmax, ymax)):
+        if not intersect_aabb(
+                min1, max1, (xmin + 1, ymin + 1), (xmax - 1, ymax - 1)):
             return
 
         current_time = time.time()
         draw_any = False
 
-        def calc_alpha(event_time):
-            fade_time = min(prefs.display_time, prefs.fade_time)
-            if fade_time == 0.0:
-                alpha = 1.0
-            else:
-                t = current_time - event_time
-                alpha = (1.0 - (t - (prefs.display_time - fade_time)) /
-                         fade_time)
-                alpha = min(max(0.0, alpha), 1.0)
-            return alpha
-
         font_size = prefs.font_size
         font_id = 0
         dpi = context.user_preferences.system.dpi
         blf.size(font_id, font_size, dpi)
-        blf.enable(font_id, blf.SHADOW)
-        blf.shadow_offset(font_id, 1, -1)
+
+        def draw_text(text):
+            col = prefs.color_shadow
+            bgl.glColor4f(*col[:3], col[3] * 20)
+            blf.blur(font_id, 5)
+            blf.draw(font_id, text)
+            blf.blur(font_id, 0)
+
+            bgl.glColor3f(*prefs.color)
+            blf.draw(font_id, text)
+
+        def draw_line(p1, p2):
+            bgl.glEnable(bgl.GL_BLEND)
+            bgl.glEnable(bgl.GL_LINE_SMOOTH)
+
+            bgl.glLineWidth(3.0)
+            bgl.glColor4f(*prefs.color_shadow)
+            bgl.glBegin(bgl.GL_LINES)
+            bgl.glVertex2f(*p1)
+            bgl.glVertex2f(*p2)
+            bgl.glEnd()
+
+            bgl.glLineWidth(1.0 if prefs.color_shadow[-1] == 0.0 else 1.5)
+            bgl.glColor3f(*prefs.color)
+            bgl.glBegin(bgl.GL_LINES)
+            bgl.glVertex2f(*p1)
+            bgl.glVertex2f(*p2)
+            bgl.glEnd()
+
+            bgl.glLineWidth(1.0)
+            bgl.glDisable(bgl.GL_LINE_SMOOTH)
 
         # user_preferences.system.use_region_overlapが真の場合に、
         # 二重に描画されるのを防ぐ
@@ -579,26 +616,17 @@ class ScreencastKeysStatus(bpy.types.Operator):
         if prefs.show_last_operator and operator_log:
             t, name, idname_py, addr = operator_log[-1]
             if current_time - t <= prefs.display_time:
-                alpha = calc_alpha(t)
-                color = list(prefs.color)[:3] + [prefs.color[3] * alpha]
-                bgl.glColor4f(*color)
-                blf.shadow(font_id, 5, *prefs.color_shadow[:3],
-                           prefs.color_shadow[3] * alpha * 2)
+                color = prefs.color
+                bgl.glColor3f(*color)
 
                 text = bpy.app.translations.pgettext_iface(name, 'Operator')
                 text += " ('{}')".format(idname_py)
 
                 blf.position(font_id, px, py, 0)
-                blf.draw(font_id, text)
+                draw_text(text)
                 py += th + th * cls.SEPARATOR_HEIGHT * 0.2
-
-                bgl.glEnable(bgl.GL_BLEND)  # blf.draw()終了時に勝手に無効になる
-                bgl.glColor4f(*color)
-                bgl.glBegin(bgl.GL_LINES)
-                bgl.glVertex2f(px, py)
-                w = blf.dimensions(font_id, 'Left Mouse')[0]  # 適当
-                bgl.glVertex2f(px + w, py)
-                bgl.glEnd()
+                tw = blf.dimensions(font_id, 'Left Mouse')[0]  # 適当
+                draw_line((px, py), (px + tw, py))
                 py += th * cls.SEPARATOR_HEIGHT * 0.8
 
                 draw_any = True
@@ -606,10 +634,9 @@ class ScreencastKeysStatus(bpy.types.Operator):
             else:
                 py += th + th * cls.SEPARATOR_HEIGHT
 
-        bgl.glColor4f(*prefs.color)
+        bgl.glColor3f(*prefs.color)
         if cls.hold_keys or mhm.is_rendering():
             col = prefs.color_shadow[:3] + (prefs.color_shadow[3] * 2,)
-            blf.shadow(font_id, 5, *col)
             mod_names = cls.sorted_modifiers(cls.hold_keys)
             if mhm.is_rendering():
                 if 0:
@@ -619,7 +646,8 @@ class ScreencastKeysStatus(bpy.types.Operator):
             else:
                 text = ' + '.join(mod_names)
             blf.position(font_id, px, py, 0)
-            blf.draw(font_id, text)
+            # blf.draw(font_id, text)
+            draw_text(text)
             py += th
             draw_any = True
         else:
@@ -629,23 +657,16 @@ class ScreencastKeysStatus(bpy.types.Operator):
 
         if cls.hold_keys or event_log:
             py += th * cls.SEPARATOR_HEIGHT * 0.2
-            bgl.glEnable(bgl.GL_BLEND)
-            bgl.glBegin(bgl.GL_LINES)
-            bgl.glVertex2f(px, py)
-            w = blf.dimensions(font_id, 'Left Mouse')[0]  # 適当
-            bgl.glVertex2f(px + w, py)
-            bgl.glEnd()
+            tw = blf.dimensions(font_id, 'Left Mouse')[0]  # 適当
+            draw_line((px, py), (px + tw, py))
             py += th * cls.SEPARATOR_HEIGHT * 0.8
             draw_any = True
         else:
             py += th * cls.SEPARATOR_HEIGHT
 
         for event_time, event_type, modifiers, count in event_log[::-1]:
-            alpha = calc_alpha(event_time)
-            color = list(prefs.color)[:3] + [prefs.color[3] * alpha]
-            bgl.glColor4f(*color)
-            blf.shadow(font_id, 5, *prefs.color_shadow[:3],
-                       prefs.color_shadow[3] * alpha * 2)
+            color = prefs.color
+            bgl.glColor3f(*color)
 
             text = event_type.names[event_type.name]
             if modifiers:
@@ -654,14 +675,16 @@ class ScreencastKeysStatus(bpy.types.Operator):
             if count > 1:
                 text += ' x' + str(count)
             blf.position(font_id, px, py, 0)
-            blf.draw(font_id, text)
+            # blf.draw(font_id, text)
+            draw_text(text)
 
             py += th
             draw_any = True
 
         bgl.glDisable(bgl.GL_BLEND)
         bgl.glScissor(*glscissorbox)
-        blf.disable(font_id, blf.SHADOW)
+        bgl.glLineWidth(1.0)
+        # blf.disable(font_id, blf.SHADOW)
 
         if draw_any:
             cls.draw_regions_prev.add(region.as_pointer())
@@ -942,7 +965,7 @@ class ScreencastKeysPanel(bpy.types.Panel):
         column.prop(prefs, 'color_shadow')
         column.prop(prefs, 'font_size')
         column.prop(prefs, 'display_time')
-        column.prop(prefs, 'fade_time')
+        # column.prop(prefs, 'fade_time')
 
         column.separator()
 
