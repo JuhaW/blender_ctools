@@ -563,12 +563,13 @@ class ScreencastKeysStatus(bpy.types.Operator):
         if not rect:
             return
         xmin, ymin, xmax, ymax = rect
-        win, area, region, x, y = cls.get_origin(context)
+        win, _area, _region, x, y = cls.get_origin(context)
         w = xmax - x
         h = ymax - y
         if w == h == 0:
             return
         region = context.region
+        area = context.area
         if region.type == 'WINDOW':
             r_xmin, r_ymin, r_xmax, r_ymax = region_window_rectangle(area)
         else:
