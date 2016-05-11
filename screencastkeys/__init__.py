@@ -569,7 +569,14 @@ class ScreencastKeysStatus(bpy.types.Operator):
         if w == h == 0:
             return
         region = context.region
-        r_xmin, r_ymin, r_xmax, r_ymax = region_window_rectangle(area)
+        if region.type == 'WINDOW':
+            r_xmin, r_ymin, r_xmax, r_ymax = region_window_rectangle(area)
+        else:
+            r_xmin, r_ymin, r_xmax, r_ymax = (
+                region.x,
+                region.y,
+                region.x + region.width - 1,
+                region.y + region.height - 1)
         if not intersect_aabb(
                 (r_xmin, r_ymin), (r_xmax, r_ymax),
                 (xmin + 1, ymin + 1), (xmax - 1, ymax - 1)):
