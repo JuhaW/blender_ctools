@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'CTools',
     'author': 'chromoly',
-    'version': (1, 2),
+    'version': (1, 3),
     'blender': (2, 77, 0),
     'location': '',
     'description': 'Collection of add-ons',
