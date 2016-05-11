@@ -509,6 +509,8 @@ class ScreencastKeysStatus(bpy.types.Operator):
             w = max(w, blf.dimensions(font_id, text)[0])
             h += th
 
+        h += th
+
         if 0:
             return x, y, x + w, y + h
         else:
