@@ -205,6 +205,17 @@ def intersect_aabb(min1, max1, min2, max2):
     return True
 
 
+def region_window_rectangle(area):
+    rect = [99999, 99999, 0, 0]
+    for region in area.regions:
+        if region.type == 'WINDOW':
+            rect[0] = min(rect[0], region.x)
+            rect[1] = min(rect[1], region.y)
+            rect[2] = max(region.x + region.width - 1, rect[2])
+            rect[3] = max(region.y + region.height - 1, rect[3])
+    return rect
+
+
 def region_rectangle_v3d(context, area=None, region=None):
     """
     for Region Overlap
@@ -232,8 +243,9 @@ def region_rectangle_v3d(context, area=None, region=None):
             elif ar.type == 'UI':
                 ui = ar
 
-    xmin = region.x
-    xmax = xmin + region.width - 1
+    # xmin = region.x
+    # xmax = xmin + region.width - 1
+    xmin, _, xmax, _ = region_window_rectangle(area)
     sys_pref = context.user_preferences.system
     if sys_pref.use_region_overlap:
         left_widht = right_widht = 0
@@ -506,13 +518,13 @@ class ScreencastKeysStatus(bpy.types.Operator):
                 if prefs.origin == 'AREA':
                     xmin = area.x
                     ymin = area.y
-                    xmax = area.x + area.width
-                    ymax = area.y + area.height
+                    xmax = area.x + area.width - 1
+                    ymax = area.y + area.height - 1
                 else:
                     xmin = region.x
                     ymin = region.y
-                    xmax = region.x + region.width
-                    ymax = region.y + region.height
+                    xmax = region.x + region.width - 1
+                    ymax = region.y + region.height - 1
                 return (max(x, xmin), max(y, ymin),
                         min(x + w, xmax), min(y + h, ymax))
 
@@ -533,8 +545,10 @@ class ScreencastKeysStatus(bpy.types.Operator):
             for region in area.regions:
                 if region.id != 0:
                     min1 = (region.x, region.y)
-                    max1 = (region.x + region.width, region.y + region.height)
-                    if intersect_aabb(min1, max1, (x, y), (x + w, y + h)):
+                    max1 = (region.x + region.width - 1,
+                            region.y + region.height - 1)
+                    if intersect_aabb(min1, max1, (x, y),
+                                      (x + w - 1, y + h - 1)):
                         regions.append((area, region))
         return regions
 
@@ -555,10 +569,10 @@ class ScreencastKeysStatus(bpy.types.Operator):
         if w == h == 0:
             return
         region = context.region
-        min1 = (region.x, region.y)
-        max1 = (region.x + region.width, region.y + region.height)
+        r_xmin, r_ymin, r_xmax, r_ymax = region_window_rectangle(area)
         if not intersect_aabb(
-                min1, max1, (xmin + 1, ymin + 1), (xmax - 1, ymax - 1)):
+                (r_xmin, r_ymin), (r_xmax, r_ymax),
+                (xmin + 1, ymin + 1), (xmax - 1, ymax - 1)):
             return
 
         current_time = time.time()
