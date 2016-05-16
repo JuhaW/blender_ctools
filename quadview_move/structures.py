@@ -36,7 +36,7 @@
 
 
 import ctypes
-from ctypes import CDLL, Structure, Union, POINTER, cast, \
+from ctypes import CDLL, Structure, Union, POINTER, addressof, cast, \
     c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
     py_object, c_ssize_t, c_uint, c_int8, c_uint8, CFUNCTYPE
 import numpy as np
@@ -95,11 +95,166 @@ def set_fields(cls, *field_items):
 ###############################################################################
 # blenkernel / makesdna / windowmanager/ editors
 ###############################################################################
+class Link(Structure):
+    """source/blender/makesdna/DNA_listBase.h: 47"""
+
+Link._fields_ = fields(
+    Link, '*next', '*prev',
+)
+
+
 class ListBase(Structure):
     """source/blender/makesdna/DNA_listBase.h: 59"""
     _fields_ = fields(
         c_void_p, 'first', 'last',
     )
+
+    def remove(self, vlink):
+        """
+        void BLI_remlink(ListBase *listbase, void *vlink)
+        {
+            Link *link = vlink;
+
+            if (link == NULL) return;
+
+            if (link->next) link->next->prev = link->prev;
+            if (link->prev) link->prev->next = link->next;
+
+            if (listbase->last == link) listbase->last = link->prev;
+            if (listbase->first == link) listbase->first = link->next;
+        }
+        """
+        link = vlink
+        if not vlink:
+            return
+
+        if link.next:
+            link.next.contents.prev = link.prev
+        if link.prev:
+            link.prev.contents.next = link.next
+
+        if self.last == addressof(link):
+            self.last = cast(link.prev, c_void_p)
+        if self.first == addressof(link):
+            self.first = cast(link.next, c_void_p)
+
+    def find(self, number):
+        """
+        void *BLI_findlink(const ListBase *listbase, int number)
+        {
+            Link *link = NULL;
+
+            if (number >= 0) {
+                link = listbase->first;
+                while (link != NULL && number != 0) {
+                    number--;
+                    link = link->next;
+                }
+            }
+
+            return link;
+        }
+        """
+        link_p = None
+        if number >= 0:
+            link_p = cast(c_void_p(self.first), POINTER(Link))
+            while link_p and number != 0:
+                number -= 1
+                link_p = link_p.contents.next
+        return link_p.contents if link_p else None
+
+    def insert_after(self, vprevlink, vnewlink):
+        """
+        void BLI_insertlinkafter(ListBase *listbase, void *vprevlink, void *vnewlink)
+        {
+            Link *prevlink = vprevlink;
+            Link *newlink = vnewlink;
+
+            /* newlink before nextlink */
+            if (newlink == NULL) return;
+
+            /* empty list */
+            if (listbase->first == NULL) {
+                listbase->first = newlink;
+                listbase->last = newlink;
+                return;
+            }
+
+            /* insert at head of list */
+            if (prevlink == NULL) {
+                newlink->prev = NULL;
+                newlink->next = listbase->first;
+                newlink->next->prev = newlink;
+                listbase->first = newlink;
+                return;
+            }
+
+            /* at end of list */
+            if (listbase->last == prevlink) {
+                listbase->last = newlink;
+            }
+
+            newlink->next = prevlink->next;
+            newlink->prev = prevlink;
+            prevlink->next = newlink;
+            if (newlink->next) {
+                newlink->next->prev = newlink;
+            }
+        }
+        """
+        prevlink = vprevlink
+        newlink = vnewlink
+
+        if not newlink:
+            return
+
+        def gen_ptr(link):
+            if isinstance(link, (int, type(None))):
+                return cast(c_void_p(link), POINTER(Link))
+            else:
+                return ctypes.pointer(link)
+
+        if not self.first:
+            self.first = self.last = addressof(newlink)
+            return
+
+        if not prevlink:
+            newlink.prev = None
+            newlink.next = gen_ptr(self.first)
+            newlink.next.contents.prev = gen_ptr(newlink)
+            self.first = addressof(newlink)
+            return
+
+        if self.last == addressof(prevlink):
+            self.last = addressof(newlink)
+
+        newlink.next = prevlink.next
+        newlink.prev = gen_ptr(prevlink)
+        prevlink.next = gen_ptr(newlink)
+        if newlink.next:
+            newlink.next.prev = gen_ptr(newlink)
+
+    def insert(self, i, vlink):
+        self.insert_after(self.find(i - 1), vlink)
+
+    def test(self):
+        link1 = Link()
+        link2 = Link()
+        self.insert_after(None, link1)
+        # self.insert_after(link1, link2)
+        self.insert(1, link2)
+        def eq(a, b):
+            return addressof(a) == addressof(b)
+        assert (self.first == addressof(link1))
+        assert (self.last == addressof(link2))
+        assert (eq(link1.next.contents, link2))
+        assert (eq(link2.prev.contents, link1))
+        assert (eq(link1.next.contents.prev.contents, link1))
+        assert (eq(link2.prev.contents.next.contents, link2))
+
+        self.remove(link2)
+        assert(self.last == addressof(link1))
+        assert(not link1.next)
 
 
 class rcti(Structure):
