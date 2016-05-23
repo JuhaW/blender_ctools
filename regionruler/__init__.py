@@ -442,7 +442,7 @@ def get_widget_unit(context):
 
 
 def get_view_location(context):
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     ruler_settings = space_prop.get(context.space_data, 'region_ruler')
     region = context.region
     rv3d = context.region_data
@@ -533,7 +533,7 @@ class Data:
         # delete operators
         context = bpy.context
         wm = context.window_manager
-        prefs = RegionRulerPreferences.get_prefs()
+        prefs = RegionRulerPreferences.get_instance()
         valid_addresses = [win.as_pointer() for win in wm.windows]
         for address in list(self.operators):
             if address not in valid_addresses:
@@ -725,7 +725,7 @@ def is_modal_needed(context):
     """偽を返すならmodalオペレータを終了してもいい。
     """
     wm = context.window_manager
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     if data.simple_measure or RegionRuler_PG._measure:
         return True
     if (prefs.draw_mouse_coordinates or prefs.use_simple_measure or
@@ -1000,7 +1000,7 @@ def calc_relative_magnification(unit_system):
 
 
 def scale_label_interval(context, unit_system, cnt):
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     magnification = calc_relative_magnification(unit_system)
     interval = 0
     if magnification and cnt % magnification == 0:
@@ -1488,7 +1488,7 @@ def draw_mask(context):
 
 
 def draw_region_rulers(context):
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     area = context.area
     region = context.region
     xmin, ymin, xmax, ymax = region_drawing_rectangle(context, area, region)
@@ -1535,7 +1535,7 @@ def draw_unit_box(context, use_fill):
     render情報が表示されている場合でも、propertiesパネル表示用の＋マークと
     重なる事を避ける為表示位置は変えない)
     """
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     if context.area.type == 'VIEW_3D':
         unit_system = data.unit_system
         if unit_system.system == 'NONE':
@@ -1607,7 +1607,7 @@ def draw_measure(context, event):
     ポイントの続きの場合はその深度に合わせる。"""
     ruler_settings = space_prop.get(context.space_data, 'region_ruler')
     running_measure = ruler_settings.measure
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     region = context.region
     if not data.is_inside:
         # if data.last_region_id != region.id:
@@ -1920,7 +1920,7 @@ def draw_measure(context, event):
 
 def draw_cross_cursor(context, event):
     running_measure = RegionRuler_PG._measure
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     if not data.is_inside:
         return
     if running_measure or data.simple_measure:
@@ -2010,7 +2010,7 @@ def make_mouse_coordinate_label(context, unit_system, value):
 
 def draw_mouse_coordinates_lower_right(context, event, use_fill):
     """マウス座標をカーソルに追従せずに右下に描画"""
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
 
     unit_system = data.unit_system
     font = prefs.font
@@ -2052,7 +2052,7 @@ def draw_mouse_coordinates(context, event, use_fill):
     wm = context.window_manager
     ruler_settings = space_prop.get(context.space_data, 'region_ruler')
     running_measure = ruler_settings.measure
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     # data.mcbox_x, data.ymcboxの計算だけは必要なので
     # data.is_insideがFalseだからといってすぐreturnしない
     if not running_measure and not data.simple_measure:
@@ -2185,7 +2185,7 @@ def draw_callback(context):
     wm = context.window_manager
     window = context.window
     prop = space_prop.get(context.space_data, 'region_ruler')
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     ptr = window.as_pointer()
 
     if data.handle:
@@ -2326,7 +2326,7 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
         return context.window.as_pointer() not in data.operators
 
     def modal_measure(self, context, event):
-        prefs = RegionRulerPreferences.get_prefs()
+        prefs = RegionRulerPreferences.get_instance()
         running_measure = RegionRuler_PG._measure
 
         retval = {'PASS_THROUGH'}
@@ -2461,7 +2461,7 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
         elif event.type.startswith('TIMER'):
             return {'PASS_THROUGH'}
 
-        prefs = RegionRulerPreferences.get_prefs()
+        prefs = RegionRulerPreferences.get_instance()
         wm = context.window_manager
         data.wm_sync()
 
@@ -2715,7 +2715,7 @@ class VIEW3D_PT_region_ruler_node(VIEW3D_PT_region_ruler_base,
 def auto_save(context):
     """ModalOperator中はAutoSaveが働かないのでこちらで再現する
     """
-    prefs = RegionRulerPreferences.get_prefs()
+    prefs = RegionRulerPreferences.get_instance()
     file_prefs = context.user_preferences.filepaths
     if not file_prefs.use_auto_save_temporary_files or not prefs.auto_save:
         return None

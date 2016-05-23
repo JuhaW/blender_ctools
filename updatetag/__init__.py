@@ -108,7 +108,7 @@ class MATERIAL_PT_driver_update_tag(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        prefs = UpdateTagPreferences.get_prefs()
+        prefs = UpdateTagPreferences.get_instance()
         return prefs.use_material
 
     def draw(self, context):
@@ -125,7 +125,7 @@ class TEXTURE_PT_driver_update_tag(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        prefs = UpdateTagPreferences.get_prefs()
+        prefs = UpdateTagPreferences.get_instance()
         return prefs.use_texture
 
     def draw(self, context):
@@ -402,7 +402,7 @@ def callback_scene_update_pre(scene):
     if context.region:
         return
 
-    prefs = UpdateTagPreferences.get_prefs()
+    prefs = UpdateTagPreferences.get_instance()
     if not prefs:
         return
     if prefs.use_material:

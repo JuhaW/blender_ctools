@@ -55,7 +55,7 @@ _RELEASE = False
 # Settings
 ###############################################################################
 def reset_groups(context):
-    prefs = MouseGesturePreferences.get_prefs()
+    prefs = MouseGesturePreferences.get_instance()
     groups = prefs.gesture_groups
     groups.clear()
 
@@ -644,11 +644,11 @@ class WM_OT_mouse_gesture_stubs(bpy.types.Operator):
     function = bpy.props.StringProperty()
 
     def group_add(self, context):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         prefs.gesture_groups.add()
 
     def group_remove(self, context):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         i = list(prefs.gesture_groups).index(context.mg_group)
         prefs.gesture_groups.remove(i)
 
@@ -664,7 +664,7 @@ class WM_OT_mouse_gesture_stubs(bpy.types.Operator):
 
     @classmethod
     def groups_unset(cls, context):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         prefs.property_unset('gesture_groups')
 
     @classmethod
@@ -941,7 +941,7 @@ def region_is_overlap(context, area, region):
 
 
 def prop_group_enum_items(self, context):
-    prefs = MouseGesturePreferences.get_prefs()
+    prefs = MouseGesturePreferences.get_instance()
     items = []
     for group in prefs.gesture_groups:
         if group.name:
@@ -1057,7 +1057,7 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
                 return
 
         U = context.user_preferences
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         dpi = U.system.dpi
         widget_unit = int((PIXEL_SIZE * dpi * 20 + 36) / 72)
 
@@ -1177,7 +1177,7 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
             return 'D'
 
     def update_item(self, context):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
 
         self.item = None
         group = prefs.gesture_groups.get(self.group)
@@ -1194,7 +1194,7 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
                         return
 
     def coords_append(self, event, mco=None):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         if mco is None:
             mco = Vector((event.mouse_x, event.mouse_y))
         mco_rel = mco - self.coords[-1]
@@ -1348,7 +1348,7 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
 
     def invoke(self, context, event):
         U = context.user_preferences
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         if not self.group or self.group not in prefs.gesture_groups:
             return {'CANCELLED'}
 
@@ -1436,7 +1436,7 @@ def scene_update_pre(scene):
 
 @bpy.app.handlers.persistent
 def load_handler(dummy):
-    prefs = MouseGesturePreferences.get_prefs()
+    prefs = MouseGesturePreferences.get_instance()
     prefs.ensure_operator_args()
 
 
@@ -1444,7 +1444,7 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    prefs = MouseGesturePreferences.get_prefs()
+    prefs = MouseGesturePreferences.get_instance()
     if not prefs.is_property_set('gesture_groups'):
         reset_groups(bpy.context)
 

@@ -1132,7 +1132,7 @@ class MESH_OT_intersect_cutoff(GrabCursor, bpy.types.Operator):
         :type context: bpy.types.Context
         """
 
-        prefs = QuickBooleanPreferences.get_prefs()
+        prefs = QuickBooleanPreferences.get_instance()
         color = prefs.color
         snap_color = prefs.snap_color
 

@@ -311,7 +311,7 @@ class VIEW3D_OT_quadview_move(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
-        prefs = QuadViewMovePreferences.get_prefs()
+        prefs = QuadViewMovePreferences.get_instance()
 
         mco = self.mco = (event.mouse_x, event.mouse_y)
         for region in context.area.regions:

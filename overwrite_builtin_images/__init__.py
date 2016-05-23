@@ -111,7 +111,7 @@ def update_image(context, image_type, image_size,
     if not test_platform():
         return
 
-    pref = OverwriteSplashImagePreferences.get_prefs()
+    pref = OverwriteSplashImagePreferences.get_instance()
     if image_type == 'splash':
         if image_size == 1:
             image_name = 'splash'

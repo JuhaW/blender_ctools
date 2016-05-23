@@ -1804,7 +1804,7 @@ def draw_callback(cls, context):
     if not data:
         return
 
-    prefs = DrawNearestPreferences.get_prefs()
+    prefs = DrawNearestPreferences.get_instance()
     event = data['event']
     area = context.area
     region = context.region
@@ -2215,7 +2215,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
         else:  # 現在のwindowに描画対象が無いならスキップ
             return {'PASS_THROUGH'}
 
-        prefs = DrawNearestPreferences.get_prefs()
+        prefs = DrawNearestPreferences.get_instance()
         data = self.active(win)
         mco = (event.mouse_x, event.mouse_y)
         mco_prev = data.get('mco')
@@ -2526,7 +2526,7 @@ def scene_update_pre(scene):
             dm_updated = False
             dm_address = None
             dm_num_elems = [-1, -1, -1, -1]
-            prefs = DrawNearestPreferences.get_prefs()
+            prefs = DrawNearestPreferences.get_instance()
             if prefs.use_derived_mesh:
                 dm = get_dm(ob.data)
                 if dm:

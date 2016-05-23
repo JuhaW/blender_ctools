@@ -17,40 +17,48 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
+import importlib
+
 import bpy
 
 
-class AddonPreferences:
-    _module = {}
+def get_addon_preferences(name):
+    """AddonPreferencesのインスタンスを返す
+    :param name: モジュール名。 e.g. 'ctools', 'ctools.quadview_move'
+    :type name: str
+    :rtype: AddonPreferences
+    """
+    context = bpy.context
+    if '.' in name:
+        pkg, mod = name.split('.')
+        if pkg == 'ctools':
+            ctools_module = importlib.import_module(pkg)
+            prefs = ctools_module.get_addon_preferences(mod)
+            return prefs
+        else:
+            prefs = context.user_preferences.addons[pkg].preferences
+            return getattr(prefs, mod)
+    else:
+        return context.user_preferences.addons[name].preferences
 
+
+class AddonPreferences:
     @classmethod
-    def get_prefs(cls, package=''):
+    def get_instance(cls, package=''):
         if not package:
             package = __package__
-        if '.' in package:
-            pkg, name = package.split('.')
-            # key = cls.__qualname__
-            if package in cls._module:
-                mod = cls._module[package]
-            else:
-                import importlib
-                mod = cls._module[package] = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[package].preferences
+        return get_addon_preferences(package)
 
     @classmethod
     def register(cls):
         if '.' in __package__:
-            cls.get_prefs()
+            cls.get_instance()
         c = super()
         if hasattr(c, 'register'):
             c.register()
 
     @classmethod
     def unregister(cls):
-        cls._module.clear()
         c = super()
         if hasattr(c, 'unregister'):
             c.unregister()
@@ -512,18 +520,7 @@ class AddonKeyMapUtility:
         :type package: str
         :rtype: AddonPreferences
         """
-        name = cls.bl_idname
-        if name == 'ctools' or name.startswith('ctools.'):
-            return cls.get_prefs(package)
-        else:
-            context = bpy.context
-            if '.' in name:
-                pkg, mod = name.split('.')
-                prefs = context.user_preferences.addons[pkg].preferences
-                prefs = getattr(prefs, mod)
-            else:
-                prefs = context.user_preferences.addons[name].preferences
-            return prefs
+        return AddonPreferences.get_instance(package)
 
     def __get_current_values(self):
         import itertools
