@@ -56,6 +56,7 @@ try:
     importlib.reload(quadview_move)
     importlib.reload(regionruler)
     importlib.reload(screencastkeys)
+    # importlib.reload(searchmenu)
     importlib.reload(updatetag)
 except NameError:
     from . import quickboolean
@@ -68,6 +69,7 @@ except NameError:
     from . import quadview_move
     from . import regionruler
     from . import screencastkeys
+    # from . import searchmenu
     from . import updatetag
 
 
@@ -85,6 +87,7 @@ sub_modules = [
     quadview_move,
     regionruler,
     screencastkeys,
+    # searchmenu,
     updatetag,
 ]
 
