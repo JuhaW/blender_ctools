@@ -712,6 +712,33 @@ wmEvent._fields_ = fields(
 )
 
 
+# wmOperatorType.flag
+OPTYPE_REGISTER = (1 << 0)  # register operators in stack after finishing
+OPTYPE_UNDO = (1 << 1)  # do undo push after after
+OPTYPE_BLOCKING = (1 << 2)  # let blender grab all input from the WM (X11)
+OPTYPE_MACRO = (1 << 3)
+OPTYPE_GRAB_CURSOR = (1 << 4)  # grabs the cursor and optionally enables
+                               # continuous cursor wrapping
+OPTYPE_PRESET = (1 << 5)  # show preset menu
+
+# some operators are mainly for internal use
+# and don't make sense to be accessed from the
+# search menu, even if poll() returns true.
+# currently only used for the search toolbox */
+OPTYPE_INTERNAL = (1 << 6)
+
+OPTYPE_LOCK_BYPASS = (1 << 7)  # Allow operator to run when interface is locked
+
+
+class ExtensionRNA(Structure):
+    _fields_ = fields(
+        c_void, '*data',
+        c_void, '*srna',  # <StructRNA>
+        c_void_p,'call',  # <StructCallbackFunc>
+        c_void_p,'free'  # <StructFreeFunc>
+    )
+
+
 class wmOperatorType(Structure):
     """source/blender/windowmanager/WM_types.h: 518"""
     _fields_ = fields(
@@ -719,12 +746,50 @@ class wmOperatorType(Structure):
         c_char_p, 'idname',
         c_char_p, 'translation_context',
         c_char_p, 'description',
-        # 以下略
+
+        c_void_p, 'exec',
+        c_void_p, 'check',
+        c_void_p, 'invoke',
+        c_void_p, 'cancel',
+        c_void_p, 'modal',
+
+        c_void_p, 'poll',
+
+        c_void_p, 'ui',
+
+        c_void_p, 'srna',  # <StructRNA>
+
+        c_void_p, 'last_properties',  # <IDProperty>
+
+        c_void_p, 'prop',  # <PropertyRNA>
+
+        ListBase, 'macro',
+
+        c_void_p, 'modalkeymap',  # <wmKeyMap>
+
+        c_void_p, 'pyop_poll',
+
+        ExtensionRNA, 'ext',
+
+        c_short, 'flag',
     )
 
 
 class wmOperator(Structure):
-    """source/blender/makesdna/DNA_windowmanager_types.h: 344"""
+    """source/blender/makesdna/DNA_windowmanager_types.h: 344
+
+    pythonインスタンスからの取得方法:
+    # python/intern/bpy_operator.c: 423: pyop_getinstance()
+    pyop = bpy.ops.wm.splash
+    opinst = pyop.get_instance()
+    pyrna = ct.cast(ct.c_void_p(id(opinst)),
+                     ct.POINTER(structures.BPy_StructRNA)).contents
+    # wmOperator
+    op = ct.cast(ct.c_void_p(pyrna.ptr.data),
+                 ct.POINTER(structures.wmOperator)).contents
+    # wmOperatorType
+    ot = op.type.contents
+    """
 
 wmOperator._fields_ = fields(
     wmOperator, '*next', '*prev',
@@ -1576,7 +1641,7 @@ class PointerRNA(Structure):
     """makesrna/RNA_types.h"""
     _fields_ = fields(
         _PointerRNA_id, 'id',
-        c_void_p, 'type',  # <StructRNA>
+        c_void_p, 'type',  # <StructRNA> &RNA_Operator 等の値
         c_void_p, 'data',
     )
 
@@ -1677,6 +1742,14 @@ FloatPropertyRNA._fields_ = fields(
     # c_float, 'defaultvalue',
     # c_float, '*defaultarray',   # <cost float>
 )
+
+
+class BPy_StructRNA(Structure):
+    """python/intern/bpy_rna.h"""
+    _fields_ = fields(
+        PyObject_HEAD, 'head',
+        PointerRNA, 'ptr',
+    )
 
 
 class BPy_PropertyRNA(Structure):
