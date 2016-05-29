@@ -31,9 +31,9 @@ def get_addon_preferences(name):
     context = bpy.context
     if '.' in name:
         pkg, mod = name.split('.')
-        if pkg == 'ctools':
-            ctools_module = importlib.import_module(pkg)
-            prefs = ctools_module.get_addon_preferences(mod)
+        module = importlib.import_module(pkg)
+        if getattr(module, 'NAME', '') == 'ctools':
+            prefs = module.get_addon_preferences(mod)
             return prefs
         else:
             prefs = context.user_preferences.addons[pkg].preferences

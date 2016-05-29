@@ -73,6 +73,8 @@ except NameError:
     from . import updatetag
 
 
+NAME = 'ctools'
+
 UPDATE_DRY_RUN = False
 UPDATE_DIFF_TEXT = False
 
