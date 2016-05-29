@@ -23,7 +23,7 @@ bl_info = {
     'name': 'Screencast Keys Mod',
     'author': 'Paulo Gomes, Bart Crouch, John E. Herrenyo, '
               'Gaia Clary, Pablo Vazquez, chromoly, Nutti',
-    'version': (2, 0, 0),
+    'version': (2, 0, 1),
     'blender': (2, 77, 0),
     'location': '3D View > Properties Panel > Screencast Keys',
     'warning': '',
@@ -169,6 +169,13 @@ class ScreenCastKeysPreferences(
 ###############################################################################
 # タイポを防ぐために使う
 def has_release_event(self):
+    # 自分用にパッチでRIGHTBRACKETKEY直後にCOLONKEY,ATKEY,ASCIICIRCUMKEYを
+    # 追加している
+    if 'ASCIICIRCUM' in EventType.__members__:
+        key = 'ASCIICIRCUM'
+    else:
+        key = 'RIGHT_BRACKET'
+
     if self in {EventType.LEFTMOUSE, EventType.MIDDLEMOUSE,
                 EventType.RIGHTMOUSE}:
         return True
@@ -177,7 +184,7 @@ def has_release_event(self):
     elif self in {EventType.PEN, EventType.ERASER}:
         return True
     elif (EventType['ZERO'].value <= self.value <=
-          EventType['ASCIICIRCUM']):
+          EventType[key]):
         return True
     elif EventType['F1'].value <= self.value <= EventType['F19']:
         return True
