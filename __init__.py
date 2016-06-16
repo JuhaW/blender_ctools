@@ -58,6 +58,8 @@ try:
     importlib.reload(screencastkeys)
     # importlib.reload(searchmenu)
     importlib.reload(updatetag)
+    # importlib.reload(floating_window)
+    importlib.reload(splashscreen)
 except NameError:
     from . import quickboolean
     from . import drawnearest
@@ -71,6 +73,8 @@ except NameError:
     from . import screencastkeys
     # from . import searchmenu
     from . import updatetag
+    # from . import floating_window
+    from . import splashscreen
 
 
 NAME = 'ctools'
@@ -91,6 +95,8 @@ sub_modules = [
     screencastkeys,
     # searchmenu,
     updatetag,
+    # floating_window,
+    splashscreen,
 ]
 
 
