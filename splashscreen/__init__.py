@@ -55,7 +55,8 @@ TIMER_STEP = 0.01
 QT_TIMER_STEP = 0.05
 QT_ICON_SIZE = 16
 QT_IMAGE_BACK_COLOR = (0, 0, 0)
-QT_TOP = False
+QT_TOP = True
+QT_AUDIO_SUPPORT = ('.mp3', '.flac', '.wav')
 
 bl_queue = queue.Queue()
 qt_queue = queue.Queue()
@@ -482,8 +483,7 @@ class SplashDialog(QtWidgets.QDialog):
             return
         try:
             for f in os.listdir(sound_dir):
-                # TODO: 対応ファイルを正確に知る
-                if f.endswith(('.mp3', '.flac', '.wav')):
+                if f.endswith(QT_AUDIO_SUPPORT):
                     files.append(f)
         except:
             traceback.print_exc()

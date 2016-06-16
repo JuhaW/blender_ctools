@@ -46,6 +46,12 @@
 四角形、円形等でメッシュを切り抜く。ObjctModeとEditModeで利用可。
 ![Image](images/quickboolean.jpg)
 
+## Splash Screen
+標準のスプラッシュスクリーンを置換する。
+画像の変更と、画像クリックで指定ディレクトリの音声ファイルを再生する機能。
+※PyQt5のインストールが必要。
+![Image](images/splashscreen.jpg)
+
 ## その他
 ### patch/ui_layout_box.patch
 alignが真の状態のUILayoutでbox描画に不具合が起こる問題を修正するパッチ。  
