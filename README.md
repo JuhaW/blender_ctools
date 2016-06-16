@@ -28,28 +28,28 @@
 ![Image](images/quad.jpg)
 
 ## [Region Ruler](https://github.com/chromoly/regionruler 'Region Ruler')
-3DView、ImageEditor、NodeEditorにRulerを表示する。
+3DView、ImageEditor、NodeEditorにRulerを表示する。  
 ![Image](images/ruler.jpg))
 
 ## [Screencast Keys Mod](https://github.com/chromoly/blender-ScreencastKeysMod 'Screencast Keys Mod')
-[Screencast Key Status Tool](http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/3D_interaction/Screencast_Key_Status_Tool "Screencast Key Status Tool")をオペレータ実行中のイベントも取得出来るように勝手に改造したもの。
+[Screencast Key Status Tool](http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/3D_interaction/Screencast_Key_Status_Tool "Screencast Key Status Tool")をオペレータ実行中のイベントも取得出来るように勝手に改造したもの。  
 ![Image](images/screencast.jpg)
 
 ## [Update Tag](https://github.com/chromoly/blender_update_tag 'Update Tag')
-マテリアルやテクスチャのドライバーの値が変更された際に3DViewを更新する。  
+マテリアルやテクスチャのドライバーの値が変更された際に3DViewを更新する。
 
 ## List Valid Keys
-現在アクティブなAreaとRegionで有効なショートカットの一覧を標準出力かTextへ出力する。
+現在アクティブなAreaとRegionで有効なショートカットの一覧を標準出力かTextへ出力する。  
 ![Image](images/listvalidkeys.jpg)
 
 ## Quick Boolean
-四角形、円形等でメッシュを切り抜く。ObjctModeとEditModeで利用可。
+四角形、円形等でメッシュを切り抜く。ObjctModeとEditModeで利用可。  
 ![Image](images/quickboolean.jpg)
 
 ## Splash Screen
-標準のスプラッシュスクリーンを置換する。
-画像の変更と、画像クリックで指定ディレクトリの音声ファイルを再生する機能。
-※PyQt5のインストールが必要。
+標準のスプラッシュスクリーンを置換する。  
+履歴一覧はダブルクリックでファイルをロードする。画像の変更と、画像クリックで指定ディレクトリの音声ファイルを再生する機能あり。  
+※PyQt5のインストールが必要。  
 ![Image](images/splashscreen.jpg)
 
 ## その他
