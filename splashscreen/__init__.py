@@ -181,15 +181,6 @@ class CustomQGraphicsView(QtWidgets.QGraphicsView):
         else:
             self.parent().play_sound()
 
-    # def eventFilter(self, obj, event):
-    #     # 有効にするにはQApplication.installEventFilter()が必要
-    #     # if event.type() == QtCore.QEvent.WindowDeactivate:
-    #     #     self.reject()
-    #     #     return True
-    #     # if event.type() == QtCore.QEvent.MouseMove:
-    #     #     return True
-    #     return False
-
 
 class SplashDialog(QtWidgets.QDialog):
     def setupUi(self, Dialog, image_path, expand):
@@ -504,9 +495,9 @@ class SplashDialog(QtWidgets.QDialog):
             player.stop()
 
     def eventFilter(self, obj, event):
-        if event.type() == QtCore.QEvent.WindowDeactivate:
-            self.close()
-            return True
+        # if event.type() == QtCore.QEvent.WindowDeactivate:
+        #     self.close()
+        #     return True
         # if event.type() == QtCore.QEvent.MouseMove:
         #     return True
         return False
@@ -724,7 +715,6 @@ class QTSplash(bpy.types.Operator):
 
         cls.win = SplashDialog()
         app.installEventFilter(cls.win)
-        # app.installEventFilter(cls.win.graphicsView)
 
         return {'RUNNING_MODAL'}
 
