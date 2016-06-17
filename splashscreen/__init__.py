@@ -177,6 +177,7 @@ class CustomQGraphicsView(QtWidgets.QGraphicsView):
             self.resize_image()
             # self.viewport().update()
         elif event.button() == QtCore.Qt.RightButton:
+            self.parent().stop_sound()
             self.parent().close()
         else:
             self.parent().play_sound()
@@ -524,7 +525,7 @@ class SplashDialog(QtWidgets.QDialog):
 
     def closeEvent(self, event):
         # print('closeEvent')
-        self.stop_sound()
+        # self.stop_sound()
         # self.save_settings()
         qt_queue.put(None)
 
