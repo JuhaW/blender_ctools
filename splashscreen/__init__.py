@@ -58,8 +58,14 @@ QT_IMAGE_BACK_COLOR = (0, 0, 0)
 QT_TOP = True
 QT_AUDIO_SUPPORT = ('.mp3', '.flac', '.wav')
 
+if 'first_run' not in globals():
+    first_run = True
+
 bl_queue = queue.Queue()
 qt_queue = queue.Queue()
+
+
+# FIXME: リロード後に表示するとQtMultimedia.QMediaPlayer辺りが原因で落ちる
 
 
 class SplashScreenPreferences(
@@ -722,9 +728,9 @@ class QTSplash(bpy.types.Operator):
 
 @bpy.app.handlers.persistent
 def scene_update_pre(scene):
+    global first_run
     bpy.app.handlers.scene_update_pre.remove(scene_update_pre)
     bpy.ops.wm.splash_qt('INVOKE_DEFAULT')
-
 
 def menu_item(self, context):
     layout = self.layout.column()
@@ -741,11 +747,13 @@ show_splash = False
 
 
 def register():
-    global show_splash
+    global show_splash, first_run
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.INFO_MT_help.append(menu_item)
-    bpy.app.handlers.scene_update_pre.append(scene_update_pre)
+    if first_run:
+        bpy.app.handlers.scene_update_pre.append(scene_update_pre)
+        first_run = False
 
     U = bpy.context.user_preferences
     show_splash = U.view.show_splash
@@ -759,6 +767,7 @@ def unregister():
 
     U = bpy.context.user_preferences
     U.view.show_splash = show_splash
+
 
 if __name__ == '__main__':
     register()

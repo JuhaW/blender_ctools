@@ -60,6 +60,7 @@ try:
     importlib.reload(updatetag)
     # importlib.reload(floating_window)
     importlib.reload(splashscreen)
+    importlib.reload(aligntools)
 except NameError:
     from . import quickboolean
     from . import drawnearest
@@ -75,6 +76,7 @@ except NameError:
     from . import updatetag
     # from . import floating_window
     from . import splashscreen
+    from . import aligntools
 
 
 NAME = 'ctools'
@@ -97,6 +99,7 @@ sub_modules = [
     updatetag,
     # floating_window,
     splashscreen,
+    aligntools,
 ]
 
 

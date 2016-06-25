@@ -1411,7 +1411,8 @@ def unregister():
     try:
         del bpy.context.window_manager['quick_boolean']
     except:
-        traceback.print_exc()
+        # traceback.print_exc()
+        pass
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
