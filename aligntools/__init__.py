@@ -20,9 +20,9 @@
 bl_info = {
     'name': 'Align Tools',
     'author': 'chromoly',
-    'version': (0, 1, []),
+    'version': (0, 1, 1),
     'blender': (2, 77, 0),
-    'location': 'View3D > Toolshelf',
+    'location': 'View3D > Toolshelf, View3D > Shift + Ctrl + Alt + A',
     'description': '',
     'warning': '',
     'wiki_url': 'https://github.com/chromoly/quadview_move',
@@ -111,31 +111,27 @@ class AlignToolsPreferences(
         super().draw(context, layout.column())
 
     def update_keymap_items(self, context=None):
-        wm = bpy.context.window_manager
-        kc = wm.keyconfigs.addon
-        if kc:
-            for km, kmi in addon_keymaps:
-                if kmi in list(km.keymap_items):
-                    self.unregister_keymap_item(kmi)
-            addon_keymaps.clear()
-
-            km = self.get_keymap('3D View')
+        items = []
+        for km_name, kmi_id in self.registered_keymap_items():
+            km = self.get_keymap(km_name)
+            for kmi in km.keymap_items:
+                if kmi.id == kmi_id:
+                    items.append(kmi)
+        for kmi in items:
             if self.use_pie_menu:
-                op = 'wm.call_menu_pie'
-                menu = PieMenuMain
+                if kmi.idname == 'wm.call_menu':
+                    if kmi.properties.name == MenuMain.bl_idname:
+                        kmi.idname = 'wm.call_menu_pie'
+                        kmi.properties.name = PieMenuMain.bl_idname
             else:
-                op = 'wm.call_menu'
-                menu = MenuMain
-            kmi = km.keymap_items.new(
-                op, 'A', 'PRESS', shift=True, ctrl=True, alt=True,
-                head=True)
-            kmi.properties.name = menu.bl_idname
-            addon_keymaps.append((km, kmi))
-            self.register_keymap_items(addon_keymaps)
+                if kmi.idname == 'wm.call_menu_pie':
+                    if kmi.properties.name == PieMenuMain.bl_idname:
+                        kmi.idname = 'wm.call_menu'
+                        kmi.properties.name = MenuMain.bl_idname
 
     use_pie_menu = bpy.props.BoolProperty(
         name='Pie Menu',
-        default=True,
+        default=False,
         update=update_keymap_items)
 
 
@@ -451,6 +447,14 @@ def register():
     if kc:
         addon_prefs = AlignToolsPreferences.get_instance()
         """:type: AlignToolsPreferences"""
+        km = addon_prefs.get_keymap('3D View')
+        kmi = km.keymap_items.new(
+            'wm.call_menu', 'A', 'PRESS', shift=True, ctrl=True, alt=True,
+            head=True)
+        kmi.properties.name = MenuMain.bl_idname
+        addon_keymaps.append((km, kmi))
+        addon_prefs.register_keymap_items(addon_keymaps)
+
         addon_prefs.update_keymap_items()
 
     custom_icons.load_icons()

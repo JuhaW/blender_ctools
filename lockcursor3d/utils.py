@@ -389,7 +389,6 @@ class AddonKeyMapUtility:
 
     __addon_keymaps = None
     """:type: list"""
-    addon_keymaps = __addon_keymaps
 
     # custom property -----------------------------------------------
 
@@ -722,6 +721,9 @@ class AddonKeyMapUtility:
     keymaps_set_default = __keymaps_set_default
     keymaps_load = __keymaps_load
     keymaps_restore = __keymaps_restore
+
+    def registered_keymap_items(self):
+        return self.__keymap_items
 
     # draw ----------------------------------------------------------
 
