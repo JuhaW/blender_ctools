@@ -39,7 +39,10 @@ import random
 import time
 import traceback
 
-from PyQt5 import QtGui, QtWidgets, QtCore, QtMultimedia
+try:
+    from PyQt5 import QtGui, QtWidgets, QtCore, QtMultimedia
+except ImportError:
+    pass
 
 import bpy
 
