@@ -374,7 +374,8 @@ class OperatorAlign(_OperatorTemplateAlign, bpy.types.Operator):
         items=(('X', 'X', ''),
                ('Y', 'Y', ''),
                ('Z', 'Z', '')),
-        default='X'
+        default={'X'},
+        options={'ENUM_FLAG'},
     )
 
     def align_mode_items(self, context):
@@ -404,39 +405,60 @@ class OperatorAlign(_OperatorTemplateAlign, bpy.types.Operator):
     def execute(self, context):
         bpy.ops.at.fix()
         memocoords.cache_init(context)
+
+        if not self.align_axis:
+            return {'FINISHED'}
+
         if self.align_space == 'AXIS':
-            self.align_axis = 'Z'
+            self.align_axis |= {'Z'}
         if self.space == 'AXIS':
             self.axis = 'Z'
         groups = self.make_groups(context)
         if not groups:
             return {'FINISHED'}
 
-        # TODO: 複数の軸へ同時に揃える
-
-        axis_index = ('X', 'Y', 'Z').index(self.align_axis)
-
-        # pivotの再計算
-        self.recalc_group_pivots(context, groups, self.align_mode,
-                                 self.align_space, self.align_axis)
-
         # 整列対象の平面
         omat = funcs.get_orientation(context, self.align_space)
         if not omat:
             return {'CANCELLED'}
-        plane_normal = omat.col[axis_index]
-        plane_loc = self.calc_relative_to(context, groups, self.align_space)
-        plane = vam.PlaneVector(plane_loc, plane_normal)
 
-        if self.auto_axis:
-            space = self.align_space
-            axis = self.align_axis
+        group_trans_vectors = {}
+        for i, ax in enumerate(['X', 'Y', 'Z']):
+            if ax not in self.align_axis:
+                continue
+
+            # pivotの再計算
+            self.recalc_group_pivots(context, groups, self.align_mode,
+                                     self.align_space, ax)
+
+            plane_normal = omat.col[i]
+            plane_loc = self.calc_relative_to(context, groups,
+                                              self.align_space)
+            plane = vam.PlaneVector(plane_loc, plane_normal)
+
+            if self.auto_axis or len(self.align_axis) > 1:
+                space = self.align_space
+                axis = ax
+            else:
+                space = self.space
+                axis = self.axis
+
+            group_tvec = calc_group_to_plane_vector(
+                context, groups, space, axis, None, 0.0, self.influence, EPS,
+                plane)
+            for g, v in group_tvec.items():
+                if g in group_trans_vectors:
+                    group_trans_vectors[g] = group_trans_vectors[g] + v
+                else:
+                    group_trans_vectors[g] = v
+
+        groups.translate(context, group_trans_vectors)
+        if context.mode == 'OBJECT':
+            objects = [bpy.data.objects[name]
+                       for name in itertools.chain.from_iterable(groups)]
         else:
-            space = self.space
-            axis = self.axis
-        groups_align_to_plane(
-            context, groups, space, axis, None, 0.0, self.influence,
-            EPS, plane)
+            objects = None
+        funcs.update_tag(context, objects)
 
         return {'FINISHED'}
 
@@ -465,9 +487,13 @@ class OperatorAlign(_OperatorTemplateAlign, bpy.types.Operator):
         box = self.draw_box(self.layout, 'Translation Axis',
                             'show_expand_axis')
         column = box.column()
+        if len(self.align_axis) > 1:
+            column.active = False
         self.draw_property('auto_axis', column)
         if not self.auto_axis:
             column = box.column(align=True)
+            if len(self.align_axis) > 1:
+                column.active = False
             self.draw_property('space', column, text='')
             prop = self.draw_property(
                 'axis', column, text='', row=True, expand=True)
@@ -506,7 +532,8 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
         items=(('X', 'X', ''),
                ('Y', 'Y', ''),
                ('Z', 'Z', '')),
-        default='X'
+        default={'X'},
+        options={'ENUM_FLAG'},
     )
 
     def distribution_mode_items(self, context):
@@ -564,8 +591,12 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
     def execute(self, context):
         bpy.ops.at.fix()
         memocoords.cache_init(context)
+
+        if not self.distribution_axis:
+            return {'FINISHED'}
+
         if self.distribution_space == 'AXIS':
-            self.distribution_axis = 'Z'
+            self.distribution_axis |= {'Z'}
         if self.space == 'AXIS':
             self.axis = 'Z'
         groups = self.make_groups(context)
@@ -576,111 +607,129 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
         if not omat:
             return {'CANCELLED'}
 
-        # 移動軸用のPlane作成
-        axis_index = ('X', 'Y', 'Z').index(self.distribution_axis)
-        distribution_axis = omat.col[axis_index]
-        plane = vam.PlaneVector((0, 0, 0), distribution_axis)
+        group_trans_vectors = {}
+        for i, ax in enumerate(['X', 'Y', 'Z']):
+            if ax not in self.distribution_axis:
+                continue
+            # 移動軸用のPlane作成
+            distribution_axis = omat.col[i]
+            plane = vam.PlaneVector((0, 0, 0), distribution_axis)
 
-        # pivot再計算
-        self.recalc_group_pivots(
-            context, groups, self.distribution_mode, self.distribution_space,
-            self.distribution_axis)
+            # pivot再計算
+            self.recalc_group_pivots(
+                context, groups, self.distribution_mode,
+                self.distribution_space, ax)
 
-        # 全てのGroupのpivotが直線(distribution_axis)になるように修正する
-        vec = groups[0].pivot
-        for group in groups:
-            group.pivot = (group.pivot - vec).project(distribution_axis) + vec
-
-        # 分割数の計算: group.temp_position
-        for group in groups:
-            group.temp_dist = plane.distance(group.pivot)
-        groups.sort(key=lambda group: group.temp_dist)
-        if self.use_threshold:
-            i = 0  # group間の空間の数
-            distance = groups[0].temp_dist
+            # 全てのGroupのpivotが直線(distribution_axis)になるように修正する
+            vec = groups[0].pivot
             for group in groups:
-                if abs(distance - group.temp_dist) > self.threshold:
-                    i += 1
-                distance = group.temp_dist
-                group.temp_position = i
-            if i == 0:
-                return {'FINISHED'}
-        else:
-            for i, group in enumerate(groups):
-                group.temp_position = i
+                v = group.pivot - vec
+                group.pivot = v.project(distribution_axis) + vec
 
-        # 各groupの大きさを求める: group.temp_dimensions
-        dimensions = OrderedDict()  # {position: dimension, ...}
-        plane_bak = tool_data.plane
-        tool_data.plane = plane
-        for group in groups:
-            position = group.temp_position
-            if self.distribution_mode == 'DIMENSION':
-                _mat, scale = group.calc_bb(
-                    context, BoundingBox.AABB, Space.PLANE)
-                dimension = max(dimensions.get(position, 0.0), scale[2])
-            else:
-                dimension = 0.0
-            dimensions[position] = dimension
-        tool_data.plane = plane_bak
-        for group in groups:
-            group.temp_dimension = dimensions[group.temp_position]
-
-        # spacingの計算
-        if self.use_auto_spacing:
-            length = abs(groups[0].temp_dist - groups[-1].temp_dist)
-            if self.distribution_mode == 'DIMENSION':
-                for p, f in dimensions.items():
-                    if p == 0 or p == groups[-1].temp_position:
-                        f *= 0.5
-                    length -= f
-            spacing = length / groups[-1].temp_position
-            self.spacing = spacing
-        else:
-            spacing = self.spacing
-
-        # 整列対象のplaneを求める
-        planes = OrderedDict()  # {position: plane, ...}
-        vec = groups[0].pivot - distribution_axis * dimensions[0] / 2
-        for p, f in dimensions.items():
-            v = vec + distribution_axis * f / 2
-            planes[p] = vam.PlaneVector(v, distribution_axis)
-            vec += distribution_axis * (spacing + f)
-        for group in groups:
-            group.temp_plane = planes[group.temp_position].copy()
-
-        # planeの修正（spacingを手動にしていた場合）
-        if not self.use_auto_spacing:
-            pivot = self.calc_relative_to(
-                context, groups, self.distribution_space)
-            g1, g2 = groups[0], groups[-1]
-            v1 = g2.pivot - g1.pivot
-            v2 = g2.temp_plane.location - g1.temp_plane.location
-            scale = v2.length / v1.length
-            if v1.dot(v2) < 0:
-                scale *= -1
-            if scale != 0.0:
-                v0 = g1.pivot
+            # 分割数の計算: group.temp_position
+            for group in groups:
+                group.temp_dist = plane.distance(group.pivot)
+            groups.sort(key=lambda group: group.temp_dist)
+            if self.use_threshold:
+                i = 0  # group間の空間の数
+                distance = groups[0].temp_dist
                 for group in groups:
-                    # g1.temp_centerを基準にscalingを元に戻す
-                    loc = group.temp_plane.location
-                    v = (loc - v0) / scale + v0
-                    # pivotを基準にscalingを適用
-                    v = (v - pivot) * scale + pivot
-                    group.temp_plane.location = v
+                    if abs(distance - group.temp_dist) > self.threshold:
+                        i += 1
+                    distance = group.temp_dist
+                    group.temp_position = i
+                if i == 0:
+                    return {'FINISHED'}
             else:
-                for group in groups:
-                    group.temp_plane.location = pivot.copy()
+                for i, group in enumerate(groups):
+                    group.temp_position = i
 
-        if self.auto_axis:
-            space = self.distribution_space
-            axis = self.distribution_axis
+            # 各groupの大きさを求める: group.temp_dimensions
+            dimensions = OrderedDict()  # {position: dimension, ...}
+            plane_bak = tool_data.plane
+            tool_data.plane = plane
+            for group in groups:
+                position = group.temp_position
+                if self.distribution_mode == 'DIMENSION':
+                    _mat, scale = group.calc_bb(
+                        context, BoundingBox.AABB, Space.PLANE)
+                    dimension = max(dimensions.get(position, 0.0), scale[2])
+                else:
+                    dimension = 0.0
+                dimensions[position] = dimension
+            tool_data.plane = plane_bak
+            for group in groups:
+                group.temp_dimension = dimensions[group.temp_position]
+
+            # spacingの計算
+            if self.use_auto_spacing:
+                length = abs(groups[0].temp_dist - groups[-1].temp_dist)
+                if self.distribution_mode == 'DIMENSION':
+                    for p, f in dimensions.items():
+                        if p == 0 or p == groups[-1].temp_position:
+                            f *= 0.5
+                        length -= f
+                spacing = length / groups[-1].temp_position
+                self.spacing = spacing
+            else:
+                spacing = self.spacing
+
+            # 整列対象のplaneを求める
+            planes = OrderedDict()  # {position: plane, ...}
+            vec = groups[0].pivot - distribution_axis * dimensions[0] / 2
+            for p, f in dimensions.items():
+                v = vec + distribution_axis * f / 2
+                planes[p] = vam.PlaneVector(v, distribution_axis)
+                vec += distribution_axis * (spacing + f)
+            for group in groups:
+                group.temp_plane = planes[group.temp_position].copy()
+
+            # planeの修正（spacingを手動にしていた場合）
+            if not self.use_auto_spacing:
+                pivot = self.calc_relative_to(
+                    context, groups, self.distribution_space)
+                g1, g2 = groups[0], groups[-1]
+                v1 = g2.pivot - g1.pivot
+                v2 = g2.temp_plane.location - g1.temp_plane.location
+                scale = v2.length / v1.length
+                if v1.dot(v2) < 0:
+                    scale *= -1
+                if scale != 0.0:
+                    v0 = g1.pivot
+                    for group in groups:
+                        # g1.temp_centerを基準にscalingを元に戻す
+                        loc = group.temp_plane.location
+                        v = (loc - v0) / scale + v0
+                        # pivotを基準にscalingを適用
+                        v = (v - pivot) * scale + pivot
+                        group.temp_plane.location = v
+                else:
+                    for group in groups:
+                        group.temp_plane.location = pivot.copy()
+
+            if self.auto_axis or len(self.distribution_axis) > 1:
+                space = self.distribution_space
+                axis = ax
+            else:
+                space = self.space
+                axis = self.axis
+
+            group_tvec = calc_group_to_plane_vector(
+                context, groups, space, axis, None, 0.0, self.influence, EPS,
+                plane, 'temp_plane')
+            for g, v in group_tvec.items():
+                if g in group_trans_vectors:
+                    group_trans_vectors[g] = group_trans_vectors[g] + v
+                else:
+                    group_trans_vectors[g] = v
+
+        groups.translate(context, group_trans_vectors)
+        if context.mode == 'OBJECT':
+            objects = [bpy.data.objects[name]
+                       for name in itertools.chain.from_iterable(groups)]
         else:
-            space = self.space
-            axis = self.axis
-        groups_align_to_plane(
-            context, groups, space, axis, None, 0.0, self.influence,
-            EPS, plane, 'temp_plane')
+            objects = None
+        funcs.update_tag(context, objects)
 
         return {'FINISHED'}
 
@@ -716,9 +765,13 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
         box = self.draw_box(self.layout, 'Translation Axis',
                             'show_expand_axis')
         column = box.column()
+        if len(self.distribution_axis) > 1:
+            column.active = False
         self.draw_property('auto_axis', column)
         if not self.auto_axis:
             column = box.column(align=True)
+            if len(self.distribution_axis) > 1:
+                column.active = False
             self.draw_property('space', column, text='')
             prop = self.draw_property(
                 'axis', column, text='', row=True, expand=True)

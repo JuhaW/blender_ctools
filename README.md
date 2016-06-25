@@ -52,6 +52,9 @@
 ※PyQt5のインストールが必要。  
 ![Image](images/splashscreen.jpg)
 
+## Align Tools
+頂点やオブジェクト等を整列する
+
 ## その他
 ### patch/ui_layout_box.patch
 alignが真の状態のUILayoutでbox描画に不具合が起こる問題を修正するパッチ。  
