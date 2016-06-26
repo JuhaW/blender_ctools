@@ -271,13 +271,13 @@ class OperatorTemplateGroup(OperatorTemplate):
                             reset_attrs=attrs)
         column = box.column()
         self.draw_property('pivot_point', column, text='')
-        if self.show_expand_pivot:
-            if self.pivot_point == 'BOUNDING_BOX':
+        if self.pivot_point == 'BOUNDING_BOX':
+            if self.show_expand_pivot:
                 self.draw_property('pivot_point_bb_position', column)
-            elif self.pivot_point in {'ROOT', 'HEAD_TAIL'}:
-                self.draw_property('head_tail', column)
-            elif self.pivot_point == 'TARGET':
-                self.draw_property('pivot_point_target_distance', column)
+        elif self.pivot_point in {'ROOT', 'HEAD_TAIL'}:
+            self.draw_property('head_tail', column)
+        elif self.pivot_point == 'TARGET':
+            self.draw_property('pivot_point_target_distance', column)
 
         # Grouping
         attrs = ['group_type', 'bb_type', 'bb_space', 'shrink_fatten']

@@ -136,8 +136,9 @@ def get_active(context):
             if not active.is_visible:
                 active = None
     else:
-        active = actob
-        if not active.is_visible(context.scene):
+        if actob and actob.is_visible(context.scene):
+            active = actob
+        else:
             active = None
     return active
 

@@ -13,7 +13,6 @@ def load_icons():
 
     pcoll = bpy.utils.previews.new()
     icon_dir = os.path.join(os.path.dirname(__file__), 'icons')
-    print(os.path.join(icon_dir, 'set_plane.png'))
     pcoll.load('set_plane', os.path.join(icon_dir, 'set_plane.png'), 'IMAGE')
     pcoll.load('set_axis', os.path.join(icon_dir, 'set_axis.png'), 'IMAGE')
     pcoll.load('align', os.path.join(icon_dir, 'align.png'), 'IMAGE')

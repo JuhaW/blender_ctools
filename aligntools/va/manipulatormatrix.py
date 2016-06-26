@@ -767,6 +767,8 @@ class ManipulatorMatrix(Matrix):
         """orientationの'NORMAL_ACTIVE'を計算する。fallbackとしてNoneを返す"""
         mat = None
         actob = active_object or context.active_object
+        if not actob:
+            return mat
         if actob.type == 'MESH' and actob.mode == 'EDIT':
             bm = bmesh.from_edit_mesh(actob.data)
             active = bm.select_history.active
