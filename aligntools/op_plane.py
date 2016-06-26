@@ -299,7 +299,7 @@ class OperatorPlaneDraw(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
-class _OperatorSetPlane(_OperatorTemplate):
+class _OperatorSetPlane(OperatorTemplate):
     _target = 'plane'  # 'plane' or 'axis'
 
     segment_mode = bpy.props.EnumProperty(

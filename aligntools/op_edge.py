@@ -100,7 +100,7 @@ def subdivide_edge_or_add_edge(bm, eve1, eve2, ivec, eps=1e-5):
     return eve, eed, status
 
 
-class OperatorEdgeAlignToPlane(_OperatorTemplate, bpy.types.Operator):
+class OperatorEdgeAlignToPlane(OperatorTemplate, bpy.types.Operator):
     bl_idname = 'at.edge_align_to_plane'
     bl_label = 'Edge Align to Plane'
     bl_description = 'Align edge to plane'
@@ -219,8 +219,11 @@ class OperatorEdgeAlignToPlane(_OperatorTemplate, bpy.types.Operator):
             self.draw_property('axis_offset', column)
         self.draw_property('influence', column)
 
+    def check(self, context):
+        return True
 
-class OperatorEdgeIntersect(_OperatorTemplate, bpy.types.Operator):
+
+class OperatorEdgeIntersect(OperatorTemplate, bpy.types.Operator):
     bl_idname = 'at.edge_intersect'
     bl_label = 'Edge Intersect'
     bl_description = 'Intersect edges'
@@ -389,8 +392,11 @@ class OperatorEdgeIntersect(_OperatorTemplate, bpy.types.Operator):
         bmesh.update_edit_mesh(actob.data, True, True)
         return {'FINISHED'}
 
+    def check(self, context):
+        return True
 
-class OperatorEdgeUnbend(_OperatorTemplate, bpy.types.Operator):
+
+class OperatorEdgeUnbend(OperatorTemplate, bpy.types.Operator):
     bl_idname = 'at.edge_unbend'
     bl_label = 'Edge Unbend'
     bl_description = 'Unbend selected edges'
@@ -462,6 +468,9 @@ class OperatorEdgeUnbend(_OperatorTemplate, bpy.types.Operator):
         box = self.draw_box(self.layout, 'Others', '')
         column = box.column()
         self.draw_property('influence', column)
+
+    def check(self, context):
+        return True
 
 
 classes = [

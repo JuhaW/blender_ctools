@@ -165,21 +165,77 @@ class OperatorTemplate(Registerable):
             columns[attr] = self.draw_property(attr, layout)
         return columns
 
-    def as_keywords(self, ignore=()):
+    def as_keywords(self, ignore=(), skip_hidden=False, use_list=False):
         """Return a copy of the properties as a dictionary.
 
         Use collections.OrderedDict instead of dict.
         (original: blender/release/scripts/modules/bpy_types.py:600)
 
         :type ignore: abc.Iterable
+        :type skip_hidden: bool
+        :param use_list: Vector, Matrix 等をlistへ変換する
+        :type use_list: True
         :rtype: OrderedDict
         """
         from collections import OrderedDict
+        import itertools
+        from mathutils import Color, Euler, Matrix, Quaternion, Vector
         ignore = tuple(ignore) + ('rna_type',)
-        return OrderedDict(
-            [(attr, getattr(self, attr))
-             for attr in self.properties.rna_type.properties.keys()
-             if attr not in ignore])
+        r_dict = OrderedDict()
+        for attr, prop in self.properties.rna_type.properties.items():
+            if attr not in ignore and not (skip_hidden and prop.is_hidden):
+                value = getattr(self, attr)
+                if use_list:
+                    if isinstance(value, (Color, Euler, Quaternion, Vector)):
+                        value = list(value)
+                    elif isinstance(value, Matrix):
+                        value = list(itertools.chain.from_iterable(value.col))
+                r_dict[attr] = value
+        return r_dict
+
+    def as_keywords_default(self, ignore=(), skip_hidden=False):
+        """as_keywordsメソッドの亜種。現在の値の代わりにデフォルト値を返す。
+        :type ignore: abc.Iterable
+        :type skip_hidden: bool
+        :rtype: OrderedDict
+        """
+        import collections.abc
+        default_values = collections.OrderedDict()
+        ignore = tuple(ignore) + ('rna_type',)
+        for name, prop in self.properties.rna_type.properties.items():
+            if name in ignore or skip_hidden and prop.is_hidden:
+                continue
+            default = None
+            if prop.type == 'POINTER':
+                pass
+            elif prop.type == 'COLLECTION':
+                pass
+            elif prop.type == 'ENUM':
+                py_prop = getattr(self.__class__, name)
+                func, kwargs = py_prop
+                if isinstance(kwargs['items'], collections.abc.Callable):
+                    if prop.is_enum_flag:
+                        default = set()
+                    else:
+                        items = list(kwargs['items'](self, bpy.context))
+                        if items:
+                            if len(items[0]) == 5:
+                                items.sort(key=lambda x: x[-1])
+                            default = items[0][0]
+                else:
+                    if prop.is_enum_flag:
+                        default = set(prop.default_flag)
+                    else:
+                        default = prop.default
+            elif prop.type in {'BOOLEAN', 'FLOAT', 'INT'}:
+                if prop.is_array:
+                    default = list(prop.default_array)
+                else:
+                    default = prop.default
+            elif prop.type == 'STRING':
+                default = prop.default
+            default_values[name] = default
+        return default_values
 
 
 # NOTE:

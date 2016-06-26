@@ -35,7 +35,7 @@ tool_data = tooldata.tool_data
 memoize = tool_data.memoize
 
 
-class OperatorManipulatorSetA(_OperatorTemplate, bpy.types.Operator):
+class OperatorManipulatorSetA(OperatorTemplate, bpy.types.Operator):
     bl_idname = 'at.manipulator_set_a'
     bl_label = 'Set Manipulator A'
     bl_description = 'Set manipulator A'
@@ -55,7 +55,7 @@ class OperatorManipulatorSetA(_OperatorTemplate, bpy.types.Operator):
         return self.execute(context)
 
 
-class OperatorManipulatorSetB(_OperatorTemplate, bpy.types.Operator):
+class OperatorManipulatorSetB(OperatorTemplate, bpy.types.Operator):
     bl_idname = 'at.manipulator_set_b'
     bl_label = 'Set Manipulator B'
     bl_description = 'Set manipulator B'
@@ -72,7 +72,7 @@ class OperatorManipulatorSetB(_OperatorTemplate, bpy.types.Operator):
         return {'FINISHED'}
 
 
-class OperatorManipulatorAtoB(_OperatorTemplateGroup, bpy.types.Operator):
+class OperatorManipulatorAtoB(OperatorTemplateGroup, bpy.types.Operator):
     bl_idname = 'at.manipulator_a_to_b'
     bl_label = 'Manipulator A to B'
     bl_description = 'Apply manipulator difference'
@@ -170,6 +170,9 @@ class OperatorManipulatorAtoB(_OperatorTemplateGroup, bpy.types.Operator):
         # box = self.draw_box(self.layout, 'Others', '')
         # column = box.column()
         # self.draw_property('influence', column)
+
+    def check(self, context):
+        return True
 
 
 classes = [

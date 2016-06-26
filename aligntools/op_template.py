@@ -23,6 +23,7 @@ from . import grouping
 from . import tooldata
 from .va import vaoperator as vaop
 from .enums import *
+from . import op_stubs
 
 tool_data = tooldata.tool_data
 memoize = tool_data.memoize
@@ -33,9 +34,10 @@ EPS = 1e-5
 
 __all__ = (
     'orientation_enum_items',
-    '_OperatorTemplate',
-    '_OperatorTemplateTranslation',
-    '_OperatorTemplateGroup',
+    'OperatorTemplate',
+    'OperatorTemplateTranslation',
+    'OperatorTemplateGroup',
+    'OperatorTemplateModeSave',
     'EPS',
 )
 
@@ -49,31 +51,55 @@ def orientation_enum_items():
     return [(name, name.title(), '') for name in orientations]
 
 
-class _OperatorTemplate(vaop.OperatorTemplate):
+class OperatorTemplate(vaop.OperatorTemplate):
     def __init__(self):
         super().__init__()
         tool_data.operator = self
         memoize.clear()
 
-    def draw_box(self, layout, title, attr):
-        layout = layout.column(align=True)
-        column_title = layout.column(align=True)
+    def draw_box(self, layout, title, attr, reset_attrs=None):
+        layout = layout.column()
+        column_title = layout.column()
         row = column_title.row(align=True)
+
         if attr:
-            sub = row.row()
             if getattr(self, attr):
                 icon = 'DISCLOSURE_TRI_DOWN'
             else:
                 icon = 'DISCLOSURE_TRI_RIGHT'
-            sub.prop(self, attr, text='', icon=icon, emboss=False)
+        else:
+            icon = 'NONE'
         sub = row.row()
-        sub.label(title)
+        sub.alignment = 'LEFT'
+        sub.context_pointer_set('operator', self)
+        if attr:
+            op = sub.operator('wm.context_toggle', text=title, icon=icon,
+                              emboss=False)
+            op.data_path = 'operator.' + attr
+        else:
+            sub.label(title)
+
+        if reset_attrs:
+            for attr in reset_attrs:
+                # 存在しない場合に例外を発生させる為
+                _ = self.properties.rna_type.properties[attr]
+            values = self.as_keywords(skip_hidden=True, use_list=True)
+            default_values = self.as_keywords_default(skip_hidden=True)
+            values = {k: values[k] for k in reset_attrs}
+            default_values = {k: default_values[k] for k in reset_attrs}
+            if values != default_values:
+                sub = row.row()
+                sub.alignment = 'RIGHT'
+                op = sub.operator(op_stubs.OperatorResetProperties.bl_idname,
+                                  text='', icon='ZOOMOUT', emboss=False)
+                op.operator_idname = self.bl_idname
+                op.attributes = ','.join(reset_attrs)
 
         box = layout.box()
         return box
 
 
-class _OperatorTemplateTranslation(_OperatorTemplate):
+class OperatorTemplateTranslation(OperatorTemplate):
     space = bpy.props.EnumProperty(
         name='Space',
         items=orientation_enum_items(),
@@ -107,7 +133,7 @@ class _OperatorTemplateTranslation(_OperatorTemplate):
     show_expand_axis = bpy.props.BoolProperty()
 
 
-class _OperatorTemplateGroup(_OperatorTemplate):
+class OperatorTemplateGroup(OperatorTemplate):
     def __init__(self):
         super().__init__()
         self.groups = None
@@ -233,12 +259,16 @@ class _OperatorTemplateGroup(_OperatorTemplate):
         # Object Data Source
         if context.mode == 'OBJECT':
             # Axis
-            box = self.draw_box(layout, 'Data Source', '')
+            attrs = ['object_data']
+            box = self.draw_box(layout, 'Data Source', '', reset_attrs=attrs)
             column = box.column(align=True)
             self.draw_property('object_data', column, text='')
 
         # Pivot
-        box = self.draw_box(layout, 'Pivot', 'show_expand_pivot')
+        attrs = ['pivot_point', 'pivot_point_bb_position', 'head_tail',
+                 'pivot_point_target_distance']
+        box = self.draw_box(layout, 'Pivot', 'show_expand_pivot',
+                            reset_attrs=attrs)
         column = box.column()
         self.draw_property('pivot_point', column, text='')
         if self.show_expand_pivot:
@@ -250,8 +280,9 @@ class _OperatorTemplateGroup(_OperatorTemplate):
                 self.draw_property('pivot_point_target_distance', column)
 
         # Grouping
-        box = self.draw_box(layout, 'Grouping',
-                            'show_expand_grouping')
+        attrs = ['group_type', 'bb_type', 'bb_space', 'shrink_fatten']
+        box = self.draw_box(layout, 'Grouping', 'show_expand_grouping',
+                            reset_attrs=attrs)
         column = box.column()
         self.draw_property('group_type', column, text='')
         if self.show_expand_grouping:
@@ -261,3 +292,25 @@ class _OperatorTemplateGroup(_OperatorTemplate):
                 self.draw_property('bb_space', column)
                 self.draw_property('shrink_fatten', column)
 
+
+class OperatorTemplateModeSave(vaop.OperatorTemplate):
+    _props_prev = {}
+
+    def __init__(self):
+        super().__init__()
+
+        context = bpy.context
+        props_prev = self._props_prev.setdefault(self.bl_idname, {})
+        if context.mode in props_prev:
+            props = props_prev[context.mode]
+            for name, value in props.items():
+                if not self.properties.is_property_set(name):
+                    setattr(self, name, value)
+        else:
+            op_stubs.reset_operator_properties(self)
+        props_prev[context.mode] = self.as_keywords()
+
+    def check(self, context):
+        props_prev = self._props_prev.setdefault(self.bl_idname, {})
+        props_prev[context.mode] = self.as_keywords()
+        return True

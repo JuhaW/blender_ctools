@@ -31,6 +31,8 @@ bl_info = {
 }
 
 
+# TODO: オペレータでmode毎に値を保存
+
 from collections import OrderedDict
 import importlib
 import itertools
@@ -76,7 +78,7 @@ from .va import manipulatormatrix
 from .va import vaview3d as vav
 from .enums import *
 
-from .op_template import *
+from . import op_stubs
 from . import op_plane
 from . import op_align
 from . import op_edge
@@ -428,6 +430,7 @@ classes = [
     PanelMain,
 ]
 
+classes.extend(op_stubs.classes)
 classes.extend(op_plane.classes)
 classes.extend(op_align.classes)
 classes.extend(op_edge.classes)

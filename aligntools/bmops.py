@@ -927,6 +927,9 @@ class OperatorShift(vaop.OperatorTemplate, bpy.types.Operator):
                 if mod.type == 'MIRROR':
                     prop.active = True
 
+    def check(self, context):
+        return True
+
 
 classes = [
     OperatorShift,

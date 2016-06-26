@@ -17,12 +17,14 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
+import collections.abc
 from collections import OrderedDict
 import importlib
 import itertools
 import os
 import math
 import time
+
 
 import bpy
 import bpy.utils.previews
@@ -52,6 +54,7 @@ from .va import manipulatormatrix
 from .va import vaview3d as vav
 from .enums import *
 from .op_template import *
+from . import op_stubs
 from . import custom_icons
 
 tool_data = tooldata.tool_data
@@ -165,8 +168,9 @@ def groups_align_to_plane(
     funcs.update_tag(context, objects)
 
 
-class OperatorAlignToPlane(_OperatorTemplateTranslation,
-                           _OperatorTemplateGroup, bpy.types.Operator):
+class OperatorAlignToPlane(OperatorTemplateModeSave,
+                           OperatorTemplateTranslation,
+                           OperatorTemplateGroup, bpy.types.Operator):
     bl_idname = 'at.align_to_plane'
     bl_label = 'Align to Plane'
     bl_description = 'Align to plane'
@@ -218,8 +222,12 @@ class OperatorAlignToPlane(_OperatorTemplateTranslation,
         return self.execute(context)
 
     def draw(self, context):
+        op_stubs.OperatorResetProperties.set_operator(self)
+
         # Axis
-        box = self.draw_box(self.layout, 'Axis', 'show_expand_axis')
+        attrs = ['space', 'axis', 'individual_orientation']
+        box = self.draw_box(self.layout, 'Axis', 'show_expand_axis',
+                            reset_attrs=attrs)
         column = box.column(align=True)
         # if self.show_expand_axis:
         self.draw_property('space', column, text='')
@@ -235,19 +243,19 @@ class OperatorAlignToPlane(_OperatorTemplateTranslation,
         self.draw_group_boxes(context, self.layout)
 
         # Others
-        box = self.draw_box(self.layout, 'Others', 'show_expand_others')
+        attrs = ['plane_offset', 'axis_offset', 'influence']
+        box = self.draw_box(self.layout, 'Others', 'show_expand_others',
+                            reset_attrs=attrs)
         column = box.column()
         if self.show_expand_others:
             self.draw_property('plane_offset', column)
             self.draw_property('axis_offset', column)
         self.draw_property('influence', column)
 
-    def check(self, context):
-        return True
 
-
-class _OperatorTemplateAlign(_OperatorTemplateTranslation,
-                             _OperatorTemplateGroup):
+class _OperatorTemplateAlign(OperatorTemplateModeSave,
+                             OperatorTemplateTranslation,
+                             OperatorTemplateGroup):
     auto_axis = bpy.props.BoolProperty(
         name='Auto Axis',
         default=True
@@ -289,7 +297,8 @@ class _OperatorTemplateAlign(_OperatorTemplateTranslation,
                 group.pivot = group.calc_pivot(
                     context, self.pivot_point, self.pivot_point_bb_position,
                     self.head_tail, tool_data.plane,
-                    self.pivot_point_target_distance, fallback=None)
+                    self.pivot_point_target_distance,
+                    fallback=PivotPoint.CENTER)
             else:
                 group.bb_type = BoundingBox.AABB
                 group.bb_space = space
@@ -470,9 +479,12 @@ class OperatorAlign(_OperatorTemplateAlign, bpy.types.Operator):
         return self.execute(context)
 
     def draw(self, context):
+        op_stubs.OperatorResetProperties.set_operator(self)
+
         # Align
         # box = self.draw_box(self.layout, 'Align', 'show_expand_align')
-        box = self.draw_box(self.layout, 'Align', '')
+        attrs = ['align_space', 'align_axis', 'align_mode', 'relative_to']
+        box = self.draw_box(self.layout, 'Align', '', reset_attrs=attrs)
         column = box.column(align=True)
         self.draw_property('align_space', column, text='')
         prop = self.draw_property(
@@ -484,8 +496,9 @@ class OperatorAlign(_OperatorTemplateAlign, bpy.types.Operator):
         self.draw_property('relative_to', column)
 
         # Translation Axis
+        attrs = ['auto_axis', 'space', 'axis', 'individual_orientation']
         box = self.draw_box(self.layout, 'Translation Axis',
-                            'show_expand_axis')
+                            'show_expand_axis', reset_attrs=attrs)
         column = box.column()
         if len(self.align_axis) > 1:
             column.active = False
@@ -508,7 +521,8 @@ class OperatorAlign(_OperatorTemplateAlign, bpy.types.Operator):
 
         # Others
         # box = self.draw_box(self.layout, 'Others', 'show_expand_others')
-        box = self.draw_box(self.layout, 'Others', '')
+        attrs = ['influence']
+        box = self.draw_box(self.layout, 'Others', '', reset_attrs=attrs)
         column = box.column()
         self.draw_property('influence', column)
 
@@ -741,9 +755,14 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
         return self.execute(context)
 
     def draw(self, context):
+        op_stubs.OperatorResetProperties.set_operator(self)
+
         # Distribution
+        attrs = ['distribution_space', 'distribution_axis',
+                 'distribution_mode', 'use_auto_spacing', 'spacing',
+                 'relative_to', 'use_threshold', 'threshold']
         box = self.draw_box(self.layout, 'Distribution',
-                            'show_expand_distribution')
+                            'show_expand_distribution', reset_attrs=attrs)
         column = box.column(align=True)
         self.draw_property('distribution_space', column, text='')
         prop = self.draw_property(
@@ -762,8 +781,9 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
                 self.draw_property('threshold', column)
 
         # Translation Axis
+        attrs = ['auto_axis', 'space', 'axis', 'individual_orientation']
         box = self.draw_box(self.layout, 'Translation Axis',
-                            'show_expand_axis')
+                            'show_expand_axis', reset_attrs=attrs)
         column = box.column()
         if len(self.distribution_axis) > 1:
             column.active = False
@@ -786,7 +806,9 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
 
         # Others
         # box = self.draw_box(self.layout, 'Others', '')
-        box = self.draw_box(self.layout, 'Others', 'show_expand_others')
+        attrs = ['influence']
+        box = self.draw_box(self.layout, 'Others', 'show_expand_others',
+                            reset_attrs=attrs)
         column = box.column()
         self.draw_property('influence', column)
 
