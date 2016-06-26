@@ -22,7 +22,7 @@ bl_info = {
     'author': 'chromoly',
     'version': (0, 1, 1),
     'blender': (2, 77, 0),
-    'location': 'View3D > Toolshelf, View3D > Shift + Ctrl + Alt + A',
+    'location': 'View3D > Toolshelf',
     'description': '',
     'warning': '',
     'wiki_url': 'https://github.com/chromoly/quadview_move',
@@ -454,6 +454,7 @@ def register():
         kmi = km.keymap_items.new(
             'wm.call_menu', 'A', 'PRESS', shift=True, ctrl=True, alt=True,
             head=True)
+        kmi.active = False
         kmi.properties.name = MenuMain.bl_idname
         addon_keymaps.append((km, kmi))
         addon_prefs.register_keymap_items(addon_keymaps)
