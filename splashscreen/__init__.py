@@ -39,10 +39,7 @@ import random
 import time
 import traceback
 
-try:
-    from PyQt5 import QtGui, QtWidgets, QtCore, QtMultimedia
-except ImportError:
-    QtGui = QtWidgets = QtCore = QtMultimedia = None
+from PyQt5 import QtGui, QtWidgets, QtCore, QtMultimedia
 
 import bpy
 
@@ -118,8 +115,7 @@ class SplashScreenPreferences(
         col.prop(self, 'auto_play')
 
 
-base = QtWidgets.QGraphicsView if QtWidgets else object
-class CustomQGraphicsView(base):
+class CustomQGraphicsView(QtWidgets.QGraphicsView):
     def __init__(self, *args, image_path, expand, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -193,8 +189,7 @@ class CustomQGraphicsView(base):
             self.parent().play_sound()
 
 
-base = QtWidgets.QDialog if QtWidgets else object
-class SplashDialog(base):
+class SplashDialog(QtWidgets.QDialog):
     def setupUi(self, Dialog, image_path, expand):
         """自動生成部分"""
         Dialog.setObjectName("Dialog")

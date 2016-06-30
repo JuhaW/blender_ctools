@@ -30,6 +30,7 @@ bl_info = {
 }
 
 
+from collections import OrderedDict
 import difflib
 import hashlib
 import importlib
@@ -45,66 +46,132 @@ import zipfile
 
 import bpy
 
+
+sub_module_names = [
+    'quickboolean',
+    'drawnearest',
+    'lockcoords',
+    'lockcursor3d',
+    'mousegesture',
+    'overwrite_builtin_images',
+    'listvalidkeys',
+    'quadview_move',
+    'regionruler',
+    'screencastkeys',
+    # 'searchmenu',
+    'updatetag',
+    # 'floating_window',
+    'splashscreen',
+    'aligntools',
+]
+
+
+def fake_module(mod_name, mod_path, speedy=True, force_support=None):
+    """scripts/modules/addon_utils.pyのmodule_refresh関数の中からコピペ改変"""
+
+    import ast
+    ModuleType = type(ast)
+    try:
+        file_mod = open(mod_path, "r", encoding='UTF-8')
+    except OSError as e:
+        print("Error opening file %r: %s" % (mod_path, e))
+        return None
+
+    with file_mod:
+        if speedy:
+            lines = []
+            line_iter = iter(file_mod)
+            l = ""
+            while not l.startswith("bl_info"):
+                l = line_iter.readline()
+
+                if len(l) == 0:
+                    break
+            while l.rstrip():
+                lines.append(l)
+                l = line_iter.readline()
+
+            data = "".join(lines)
+
+        else:
+            data = file_mod.read()
+    del file_mod
+
+    try:
+        ast_data = ast.parse(data, filename=mod_path)
+    except:
+        print("Syntax error 'ast.parse' can't read %r" % mod_path)
+        import traceback
+        traceback.print_exc()
+        ast_data = None
+
+    body_info = None
+
+    if ast_data:
+        for body in ast_data.body:
+            if body.__class__ == ast.Assign:
+                if len(body.targets) == 1:
+                    if getattr(body.targets[0], "id", "") == "bl_info":
+                        body_info = body
+                        break
+
+    if body_info:
+        try:
+            mod = ModuleType(mod_name)
+            mod.bl_info = ast.literal_eval(body.value)
+            mod.__file__ = mod_path
+            mod.__time__ = os.path.getmtime(mod_path)
+        except:
+            print("AST error parsing bl_info for %s" % mod_name)
+            import traceback
+            traceback.print_exc()
+            raise
+
+        if force_support is not None:
+            mod.bl_info["support"] = force_support
+
+        return mod
+    else:
+        print("fake_module: addon missing 'bl_info' "
+              "gives bad performance!: %r" % mod_path)
+        return None
+
+
+def gen_fake_modules():
+    _fake_sub_modules = []  # __name__は'ctools.quickboolean'の様になる
+    for name in sub_module_names:
+        d = os.path.dirname(__file__)
+        mod = fake_module(__name__ + '.' + name,
+                          os.path.join(d, name, '__init__.py'))
+        if mod:
+            _fake_sub_modules.append(mod)
+    _fake_sub_modules.sort(
+        key=lambda mod: (mod.bl_info['category'], mod.bl_info['name']))
+
+    return OrderedDict(
+        [(mod.__name__.split('.')[-1], mod) for mod in _fake_sub_modules])
+
+
+fake_modules = gen_fake_modules()
+
+
+# reload
 try:
-    importlib.reload(quickboolean)
-    importlib.reload(drawnearest)
-    importlib.reload(lockcoords)
-    importlib.reload(lockcursor3d)
-    importlib.reload(mousegesture)
-    importlib.reload(overwrite_builtin_images)
-    importlib.reload(listvalidkeys)
-    importlib.reload(quadview_move)
-    importlib.reload(regionruler)
-    importlib.reload(screencastkeys)
-    # importlib.reload(searchmenu)
-    importlib.reload(updatetag)
-    # importlib.reload(floating_window)
-    importlib.reload(splashscreen)
-    importlib.reload(aligntools)
+    _ = NAME
+    for fake_mod in fake_modules.values():
+        try:
+            mod = importlib.import_module(fake_mod.__name__)
+            importlib.reload(mod)
+        except:
+            traceback.print_exc()
 except NameError:
-    from . import quickboolean
-    from . import drawnearest
-    from . import lockcoords
-    from . import lockcursor3d
-    from . import mousegesture
-    from . import overwrite_builtin_images
-    from . import listvalidkeys
-    from . import quadview_move
-    from . import regionruler
-    from . import screencastkeys
-    # from . import searchmenu
-    from . import updatetag
-    # from . import floating_window
-    from . import splashscreen
-    from . import aligntools
+    pass
 
 
 NAME = 'ctools'
 
 UPDATE_DRY_RUN = False
 UPDATE_DIFF_TEXT = False
-
-sub_modules = [
-    quickboolean,
-    drawnearest,
-    lockcoords,
-    lockcursor3d,
-    mousegesture,
-    overwrite_builtin_images,
-    listvalidkeys,
-    quadview_move,
-    regionruler,
-    screencastkeys,
-    # searchmenu,
-    updatetag,
-    # floating_window,
-    splashscreen,
-    aligntools,
-]
-
-
-sub_modules.sort(
-    key=lambda mod: (mod.bl_info['category'], mod.bl_info['name']))
 
 
 """
@@ -135,14 +202,14 @@ def get_addon_preferences(name=''):
     prefs = addons[__name__].preferences
     if name:
         if not hasattr(prefs, name):
-            for mod in sub_modules:
-                if mod.__name__.split('.')[-1] == name:
-                    cls = _get_pref_class(mod)
-                    if cls:
-                        prop = bpy.props.PointerProperty(type=cls)
-                        setattr(CToolsPreferences, name, prop)
-                        bpy.utils.unregister_class(CToolsPreferences)
-                        bpy.utils.register_class(CToolsPreferences)
+            fake_mod = fake_modules.get(name)
+            mod = importlib.import_module(fake_mod.__name__)
+            cls = _get_pref_class(mod)
+            if cls:
+                prop = bpy.props.PointerProperty(type=cls)
+                setattr(CToolsPreferences, name, prop)
+                bpy.utils.unregister_class(CToolsPreferences)
+                bpy.utils.register_class(CToolsPreferences)
         return getattr(prefs, name, None)
     else:
         return prefs
@@ -157,6 +224,8 @@ def register_submodule(mod):
 
 
 def unregister_submodule(mod):
+    if not hasattr(mod, '__addon_enabled__'):
+        mod.__addon_enabled__ = False
     if mod.__addon_enabled__:
         mod.unregister()
         mod.__addon_enabled__ = False
@@ -189,9 +258,8 @@ class CToolsPreferences(bpy.types.AddonPreferences):
         layout = self.layout
         """:type: bpy.types.UILayout"""
 
-        for mod in sub_modules:
-            mod_name = mod.__name__.split('.')[-1]
-            info = mod.bl_info
+        for mod_name, fake_mod in fake_modules.items():
+            info = fake_mod.bl_info
             column = layout.column(align=self.align_box_draw)
             box = column.box()
 
@@ -251,7 +319,11 @@ class CToolsPreferences(bpy.types.AddonPreferences):
 
                 # 詳細・設定値
                 if getattr(self, 'use_' + mod_name):
-                    prefs = get_addon_preferences(mod_name)
+                    try:
+                        prefs = get_addon_preferences(mod_name)
+                    except:
+                        traceback.print_exc()
+                        continue
                     if prefs and hasattr(prefs, 'draw'):
                         if self.align_box_draw:
                             box = column.box()
@@ -280,29 +352,31 @@ class CToolsPreferences(bpy.types.AddonPreferences):
         sub.prop(self, 'align_box_draw')
 
 
-for mod in sub_modules:
-    info = mod.bl_info
-    mod_name = mod.__name__.split('.')[-1]
+for name, fake_mod in fake_modules.items():
+    info = fake_mod.bl_info
 
-    def gen_update(mod):
+    def gen_update(fake_mod):
         def update(self, context):
-            if getattr(self, 'use_' + mod.__name__.split('.')[-1]):
-                if not mod.__addon_enabled__:
+            name = fake_mod.__name__.split('.')[-1]
+            try:
+                mod = importlib.import_module(fake_mod.__name__)
+                if getattr(self, 'use_' + name):
                     register_submodule(mod)
-            else:
-                if mod.__addon_enabled__:
+                else:
                     unregister_submodule(mod)
+            except:
+                # setattr(self, 'use_' + name, False)
+                traceback.print_exc()
         return update
-
 
     prop = bpy.props.BoolProperty(
         name=info['name'],
         description=info.get('description', '').rstrip('.'),
-        update=gen_update(mod),
+        update=gen_update(fake_mod),
     )
-    setattr(CToolsPreferences, 'use_' + mod_name, prop)
+    setattr(CToolsPreferences, 'use_' + name, prop)
     prop = bpy.props.BoolProperty()
-    setattr(CToolsPreferences, 'show_expanded_' + mod_name, prop)
+    setattr(CToolsPreferences, 'show_expanded_' + name, prop)
 
 
 class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
@@ -495,18 +569,26 @@ def register():
         bpy.utils.register_class(cls)
 
     prefs = get_addon_preferences()
-    for mod in sub_modules:
-        if not hasattr(mod, '__addon_enabled__'):
-            mod.__addon_enabled__ = False
-        name = mod.__name__.split('.')[-1]
+
+    for name, fake_mod in fake_modules.items():
         if getattr(prefs, 'use_' + name):
-            register_submodule(mod)
+            try:
+                mod = importlib.import_module(fake_mod.__name__)
+                register_submodule(mod)
+            except:
+                setattr(prefs, 'use_' + name, False)
+                traceback.print_exc()
 
 
 def unregister():
-    for mod in sub_modules:
-        if mod.__addon_enabled__:
-            unregister_submodule(mod)
+    prefs = get_addon_preferences()
+    for name, fake_mod in fake_modules.items():
+        if getattr(prefs, 'use_' + name):
+            try:
+                mod = importlib.import_module(fake_mod.__name__)
+                unregister_submodule(mod)
+            except:
+                traceback.print_exc()
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
