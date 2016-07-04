@@ -8,7 +8,6 @@ preview_collections = {}
 
 def load_icons():
     if 'icon32' in preview_collections:
-        print('ret')
         return
 
     pcoll = bpy.utils.previews.new()

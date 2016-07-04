@@ -851,7 +851,8 @@ class EditBoneGroup(Group):
         :type roll: bool
         """
         ob = context.active_object
-        coords = memocoords.arm_bone_coords(context, ob, Space.GLOBAL)
+        bone_coords = memocoords.arm_bone_coords(context, ob, Space.GLOBAL)
+        bone_matrixes = memocoords.arm_bone_matrices(context, ob, Space.LOCAL)
         obimat = ob.matrix_world.inverted()
         bones = ob.data.edit_bones
         trans_mat_local = obimat * matrix
@@ -864,10 +865,17 @@ class EditBoneGroup(Group):
         with vaarm.CustomProperty():
             for name, p in self:
                 bone = bones[name]
-                head, tail = coords[name]
+                head, tail = bone_coords[name]
                 if p == 0:
                     if (name, 1) in self:
-                        bone.transform(trans_mat_local, scale=True, roll=roll)
+                        trans_mat_local = obimat * matrix * obmat
+                        bone.matrix = bone_matrixes[name]
+                        m = trans_mat_local * bone.matrix
+                        zvec = m.col[2].to_3d()
+                        bone.transform(trans_mat_local, scale=True,
+                                       roll=roll)
+                        # roll=Trueだけでは不正確になる場合があるので
+                        bone.align_roll(zvec)
                     else:
                         bone.head = obimat * matrix * head
                 else:
@@ -1533,7 +1541,8 @@ class EditBoneGroups(Groups):
             matrices = dict(zip(self, matrices))
 
         ob = context.active_object
-        coords = memocoords.arm_bone_coords(context, ob, Space.GLOBAL)
+        bone_coords = memocoords.arm_bone_coords(context, ob, Space.GLOBAL)
+        bone_matrixes = memocoords.arm_bone_matrices(context, ob, Space.LOCAL)
         obmat = ob.matrix_world
         obimat = obmat.inverted()
         bones = ob.data.edit_bones
@@ -1543,23 +1552,39 @@ class EditBoneGroups(Groups):
         for bone in bones:
             bone.use_connect = False
 
+        used_bones = set()
+        all_keys = []
+        for group in self:
+            for name, p in group:
+                used_bones.add(bones[name])
+                all_keys.append((group, bones[name], p))
+        sorted_bones = vaob.sorted_dependency(list(used_bones))
+        all_keys.sort(key=lambda x: (sorted_bones.index(x[1]), x[2]))
+
         with vaarm.CustomProperty():
-            for group, matrix in matrices.items():
-                for name, p in group:
-                    bone = bones[name]
-                    head, tail = coords[name]
-                    if p == 0:
-                        if (name, 1) in group:
-                            trans_mat_local = obimat * matrix * obmat
-                            bone.transform(trans_mat_local, scale=True,
-                                           roll=roll)
-                        else:
-                            bone.head = obimat * matrix * head
+            for group, bone, p in all_keys:
+                matrix = matrices[group]
+                matrix = matrix.to_4x4()
+                name = bone.name
+                head, tail = bone_coords[name]
+                if p == 0:
+                    if (name, 1) in group:
+                        trans_mat_local = obimat * matrix * obmat
+                        bone.matrix = bone_matrixes[name]
+                        m = trans_mat_local * bone.matrix
+                        zvec = m.col[2].to_3d()
+                        bone.transform(trans_mat_local, scale=True,
+                                       roll=roll)
+                        # roll=Trueだけでは不正確になる場合があるので
+                        bone.align_roll(zvec)
                     else:
-                        if (name, 0) in group:
-                            continue
-                        else:
-                            bone.tail = obimat * matrix * tail
+                        bone.head = obimat * matrix * head
+                else:
+                    if (name, 0) in group:
+                        continue
+                    else:
+                        bone.tail = obimat * matrix * tail
+
             # 親と子のheadとtailを修正する
             for name, p in itertools.chain.from_iterable(self):
                 bone = bones[name]

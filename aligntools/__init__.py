@@ -51,7 +51,6 @@ try:
     importlib.reload(utils)
     importlib.reload(localutils)
     importlib.reload(va)
-    importlib.reload(bmops)
     importlib.reload(enums)
     importlib.reload(funcs)
     importlib.reload(grouping)
@@ -61,7 +60,6 @@ except NameError:
     from . import utils
     from . import localutils
     from . import va
-    from . import bmops
     from . import enums
     from . import funcs
     from . import grouping
@@ -83,6 +81,7 @@ from . import op_plane
 from . import op_align
 from . import op_edge
 from . import op_matrix
+from . import op_shift
 from . import custom_icons
 
 
@@ -138,27 +137,6 @@ class AlignToolsPreferences(
 
 
 ###############################################################################
-# Operator
-###############################################################################
-class OperatorFix(bpy.types.Operator):
-    """直前のOperatorが{'CANCELLED'}で終わっていた場合、ユーザー定義の
-    Operatorのundoで不具合が起こる。
-    例: ObjectModeでShift+Dで複製、modal中にマウスを動かし右クリックでキャンセル
-
-    使用法: Operatorのexecute()先頭で実行する。
-    def execute(context):
-        bpy.ops.at.fix()
-        ...
-    """
-    bl_idname = 'at.fix'
-    bl_label = 'Dummy'
-    bl_options = {'REGISTER', 'INTERNAL'}
-
-    def execute(self, context):
-        return {'FINISHED'}
-
-
-###############################################################################
 # Menu, Panel
 ###############################################################################
 class MenuManipulator(bpy.types.Menu):
@@ -181,19 +159,18 @@ class MenuManipulator(bpy.types.Menu):
         op = layout.operator(op_matrix.OperatorManipulatorAtoB.bl_idname,
                              text='Translate',
                              icon='MAN_TRANS')
-        op.mode = 'TRANSLATE'
+        op.transform_mode = 'TRANSLATE'
         op = layout.operator(op_matrix.OperatorManipulatorAtoB.bl_idname,
                              text='Rotate',
                              icon='MAN_ROT')
-        op.mode = 'ROTATE'
-        op = layout.operator(op_matrix.OperatorManipulatorAtoB.bl_idname,
-                             text='Rotate & Resize',
-                             icon='MAN_ROT')
-        op.mode = 'ROTATE_RESIZE'
+        op.transform_mode = 'ROTATE'
         op = layout.operator(op_matrix.OperatorManipulatorAtoB.bl_idname,
                              text='All',
                              icon='MANIPUL')
-        op.mode = 'ALL'
+        op.transform_mode = 'ALL'
+
+        layout.separator()
+        op = layout.operator(op_matrix.OperatorManipulatorAlign.bl_idname)
 
 
 class MenuMain(bpy.types.Menu):
@@ -244,11 +221,11 @@ class MenuMain(bpy.types.Menu):
 
         # Shift
         layout.separator()
-        op = layout.operator(bmops.OperatorShift.bl_idname,
+        op = layout.operator(op_shift.OperatorShift.bl_idname,
                              text='Shift Tangent',
                              icon_value=pcol['shift_tangent'].icon_id)
         op.mode = 'tangent'
-        op = layout.operator(bmops.OperatorShift.bl_idname,
+        op = layout.operator(op_shift.OperatorShift.bl_idname,
                              text='Shift Normal',
                              icon_value=pcol['shift_normal'].icon_id)
         op.mode = 'normal'
@@ -311,11 +288,11 @@ class PieMenuMain(bpy.types.Menu):
         layout.operator(op_edge.OperatorEdgeUnbend.bl_idname,
                         icon_value=pcol['edge_unbend'].icon_id)
         layout.separator()
-        op = layout.operator(bmops.OperatorShift.bl_idname,
+        op = layout.operator(op_shift.OperatorShift.bl_idname,
                              text='Shift Tangent',
                              icon_value=pcol['shift_tangent'].icon_id)
         op.mode = 'tangent'
-        op = layout.operator(bmops.OperatorShift.bl_idname,
+        op = layout.operator(op_shift.OperatorShift.bl_idname,
                              text='Shift Normal',
                              icon_value=pcol['shift_normal'].icon_id)
         op.mode = 'normal'
@@ -387,12 +364,12 @@ class PanelMain(bpy.types.Panel):
 
         # Shift
         layout = main_layout.column(align=True)
-        op = layout.operator(bmops.OperatorShift.bl_idname,
+        op = layout.operator(op_shift.OperatorShift.bl_idname,
                              text='Shift Tangent',
                              icon_value=pcol['shift_tangent'].icon_id)
         op.mode = 'tangent'
         op.cursor_to_center = True
-        op = layout.operator(bmops.OperatorShift.bl_idname,
+        op = layout.operator(op_shift.OperatorShift.bl_idname,
                              text='Shift Normal',
                              icon_value=pcol['shift_normal'].icon_id)
         op.mode = 'normal'
@@ -419,8 +396,6 @@ def load_post(dummy):
 classes = [
     AlignToolsPreferences,
 
-    OperatorFix,
-
     MenuManipulator,
     MenuMain,
 
@@ -435,7 +410,7 @@ classes.extend(op_plane.classes)
 classes.extend(op_align.classes)
 classes.extend(op_edge.classes)
 classes.extend(op_matrix.classes)
-classes.extend(bmops.classes)
+classes.extend(op_shift.classes)
 
 
 addon_keymaps = []
@@ -454,7 +429,7 @@ def register():
         kmi = km.keymap_items.new(
             'wm.call_menu', 'A', 'PRESS', shift=True, ctrl=True, alt=True,
             head=True)
-        kmi.active = False
+        # kmi.active = False
         kmi.properties.name = MenuMain.bl_idname
         addon_keymaps.append((km, kmi))
         addon_prefs.register_keymap_items(addon_keymaps)
@@ -468,7 +443,7 @@ def register():
 
 def unregister():
     addon_prefs = AlignToolsPreferences.get_instance()
-    """:type: utils.AlignToolsPreferences"""
+    """:type: AlignToolsPreferences"""
     addon_prefs.unregister_keymap_items()
 
     custom_icons.unload_icons()

@@ -132,6 +132,11 @@ class OperatorTemplateTranslation(OperatorTemplate):
 
     show_expand_axis = bpy.props.BoolProperty()
 
+    def is_valid_individual_orientation(self, space, Group):
+        orientations = Group.valid_individual_orientations
+        space = Space.get(space)
+        return space in orientations
+
 
 class OperatorTemplateGroup(OperatorTemplate):
     def __init__(self):
@@ -292,6 +297,15 @@ class OperatorTemplateGroup(OperatorTemplate):
                 self.draw_property('bb_space', column)
                 self.draw_property('shrink_fatten', column)
 
+    def is_valid_individual_orientation(self, space, Group):
+        orientations = Group.valid_individual_orientations
+        if self.group_type == 'BOUNDING_BOX':
+            if self.bb_type == 'AABB':
+                if Space.get(self.bb_space) in orientations:
+                    return True
+        space = Space.get(space)
+        return space in orientations
+
 
 class OperatorTemplateModeSave(vaop.OperatorTemplate):
     _props_prev = {}
@@ -307,7 +321,7 @@ class OperatorTemplateModeSave(vaop.OperatorTemplate):
                 if not self.properties.is_property_set(name):
                     setattr(self, name, value)
         else:
-            op_stubs.reset_operator_properties(self)
+            op_stubs.reset_operator_properties(self, skip_is_property_set=True)
         props_prev[context.mode] = self.as_keywords()
 
     def check(self, context):

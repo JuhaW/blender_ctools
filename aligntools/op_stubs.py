@@ -28,10 +28,22 @@ tool_data = tooldata.tool_data
 memoize = tool_data.memoize
 
 
-def is_properties_changed(operator, properties):
-    for name in op.properties.rna_type.properties.keys():
-        if name != 'rna_type' and name in properties:
-            pass
+class OperatorFix(bpy.types.Operator):
+    """直前のOperatorが{'CANCELLED'}で終わっていた場合、ユーザー定義の
+    Operatorのundoで不具合が起こる。
+    例: ObjectModeでShift+Dで複製、modal中にマウスを動かし右クリックでキャンセル
+
+    使用法: Operatorのexecute()先頭で実行する。
+    def execute(context):
+        bpy.ops.at.fix()
+        ...
+    """
+    bl_idname = 'at.fix'
+    bl_label = 'Dummy'
+    bl_options = {'REGISTER', 'INTERNAL'}
+
+    def execute(self, context):
+        return {'FINISHED'}
 
 
 class OperatorResetProperties(bpy.types.Operator):
@@ -69,20 +81,26 @@ class OperatorResetPropertiesInternal(bpy.types.Operator):
 
     operator = None
 
+    skip_is_property_set = bpy.props.BoolProperty()
+
     def execute(self, context):
         op = self.operator
         for name in op.properties.rna_type.properties.keys():
             if name != 'rna_type':
-                op.properties.property_unset(name)
+                if (not self.skip_is_property_set or
+                        not op.properties.is_property_set(name)):
+                    op.properties.property_unset(name)
         return {'FINISHED'}
 
 
-def reset_operator_properties(operator):
+def reset_operator_properties(operator, skip_is_property_set=False):
     OperatorResetPropertiesInternal.operator = operator
-    bpy.ops.at.reset_operator_properties()
+    bpy.ops.at.reset_operator_properties(
+        skip_is_property_set=skip_is_property_set)
 
 
 classes = [
+    OperatorFix,
     OperatorResetProperties,
     OperatorResetPropertiesInternal
 ]

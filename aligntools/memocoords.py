@@ -540,8 +540,8 @@ def arm_bone_matrices(context, ob, space=Space.GLOBAL, mode=None,
     :type space: Space | str
     :param mode: 'OBJECT', 'POSE', 'EDIT'
     :type filter: BoneFilter
-    :return: {name: (head, tail), ..o.}
-    :rtype: OrderedDict
+    :return: {name: Matrix, ...}
+    :rtype: OrderedDict[str, Matrix]
     """
     space = Space.get(space)
     with vaarm.CustomProperty():
@@ -589,6 +589,9 @@ def arm_bone_matrices(context, ob, space=Space.GLOBAL, mode=None,
     return matrices
 
 
+###############################################################################
+# Initialize cache
+###############################################################################
 def cache_init(context):
     ob = context.active_object
     if context.mode == 'OBJECT':

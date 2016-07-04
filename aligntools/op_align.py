@@ -36,7 +36,6 @@ from mathutils import Matrix, Vector
 from . import utils
 from . import localutils
 from . import va
-from . import bmops
 from . import enums
 from . import funcs
 from . import grouping
@@ -60,24 +59,6 @@ from . import custom_icons
 tool_data = tooldata.tool_data
 memoize = tool_data.memoize
 checkargs = CheckArgs(True)
-
-
-class OperatorFix(bpy.types.Operator):
-    """直前のOperatorが{'CANCELLED'}で終わっていた場合、ユーザー定義の
-    Operatorのundoで不具合が起こる。
-    例: ObjectModeでShift+Dで複製、modal中にマウスを動かし右クリックでキャンセル
-
-    使用法: Operatorのexecute()先頭で実行する。
-    def execute(context):
-        bpy.ops.at.fix()
-        ...
-    """
-    bl_idname = 'at.fix'
-    bl_label = 'Dummy'
-    bl_options = {'REGISTER', 'INTERNAL'}
-
-    def execute(self, context):
-        return {'FINISHED'}
 
 
 def calc_group_to_plane_vector(
@@ -168,9 +149,10 @@ def groups_align_to_plane(
     funcs.update_tag(context, objects)
 
 
-class OperatorAlignToPlane(OperatorTemplateModeSave,
+class OperatorAlignToPlane(OperatorTemplateGroup,
+                           OperatorTemplateModeSave,
                            OperatorTemplateTranslation,
-                           OperatorTemplateGroup, bpy.types.Operator):
+                           bpy.types.Operator):
     bl_idname = 'at.align_to_plane'
     bl_label = 'Align to Plane'
     bl_description = 'Align to plane'
@@ -226,7 +208,7 @@ class OperatorAlignToPlane(OperatorTemplateModeSave,
 
         # Axis
         attrs = ['space', 'axis', 'individual_orientation']
-        box = self.draw_box(self.layout, 'Axis', 'show_expand_axis',
+        box = self.draw_box(self.layout, 'Axis', '',
                             reset_attrs=attrs)
         column = box.column(align=True)
         # if self.show_expand_axis:
@@ -235,9 +217,10 @@ class OperatorAlignToPlane(OperatorTemplateModeSave,
             'axis', column, text='', row=True, expand=True)
         if self.space == 'AXIS':
             prop.active = False
-        if self.show_expand_axis:
-            column = box.column()
-            self.draw_property('individual_orientation', column)
+        column = box.column()
+        column.active = self.is_valid_individual_orientation(
+            self.space, self.groups.Group)
+        self.draw_property('individual_orientation', column)
 
         # Group
         self.draw_group_boxes(context, self.layout)
@@ -253,9 +236,9 @@ class OperatorAlignToPlane(OperatorTemplateModeSave,
         self.draw_property('influence', column)
 
 
-class _OperatorTemplateAlign(OperatorTemplateModeSave,
-                             OperatorTemplateTranslation,
-                             OperatorTemplateGroup):
+class _OperatorTemplateAlign(OperatorTemplateGroup,
+                             OperatorTemplateModeSave,
+                             OperatorTemplateTranslation):
     auto_axis = bpy.props.BoolProperty(
         name='Auto Axis',
         default=True
@@ -422,7 +405,7 @@ class OperatorAlign(_OperatorTemplateAlign, bpy.types.Operator):
             self.align_axis |= {'Z'}
         if self.space == 'AXIS':
             self.axis = 'Z'
-        groups = self.make_groups(context)
+        groups = self.groups = self.make_groups(context)
         if not groups:
             return {'FINISHED'}
 
@@ -498,7 +481,7 @@ class OperatorAlign(_OperatorTemplateAlign, bpy.types.Operator):
         # Translation Axis
         attrs = ['auto_axis', 'space', 'axis', 'individual_orientation']
         box = self.draw_box(self.layout, 'Translation Axis',
-                            'show_expand_axis', reset_attrs=attrs)
+                            '', reset_attrs=attrs)
         column = box.column()
         if len(self.align_axis) > 1:
             column.active = False
@@ -512,9 +495,11 @@ class OperatorAlign(_OperatorTemplateAlign, bpy.types.Operator):
                 'axis', column, text='', row=True, expand=True)
             if self.space == 'AXIS':
                 prop.active = False
-        if self.show_expand_axis:
-            column = box.column()
-            self.draw_property('individual_orientation', column)
+
+        column = box.column()
+        column.active = self.groups and self.is_valid_individual_orientation(
+            self.space, self.groups.Group)
+        self.draw_property('individual_orientation', column)
 
         # Group
         self.draw_group_boxes(context, self.layout)
@@ -613,7 +598,7 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
             self.distribution_axis |= {'Z'}
         if self.space == 'AXIS':
             self.axis = 'Z'
-        groups = self.make_groups(context)
+        groups = self.groups = self.make_groups(context)
         if len(groups) <= 2:
             return {'FINISHED'}
 
@@ -783,7 +768,7 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
         # Translation Axis
         attrs = ['auto_axis', 'space', 'axis', 'individual_orientation']
         box = self.draw_box(self.layout, 'Translation Axis',
-                            'show_expand_axis', reset_attrs=attrs)
+                            '', reset_attrs=attrs)
         column = box.column()
         if len(self.distribution_axis) > 1:
             column.active = False
@@ -797,9 +782,11 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
                 'axis', column, text='', row=True, expand=True)
             if self.space == 'AXIS':
                 prop.active = False
-        if self.show_expand_axis:
-            column = box.column()
-            self.draw_property('individual_orientation', column)
+
+        column = box.column()
+        column.active = self.groups and self.is_valid_individual_orientation(
+            self.space, self.groups.Group)
+        self.draw_property('individual_orientation', column)
 
         # Group関連
         self.draw_group_boxes(context, self.layout)
@@ -814,7 +801,6 @@ class OperatorDistribute(_OperatorTemplateAlign, bpy.types.Operator):
 
 
 classes = [
-    OperatorFix,
     OperatorAlignToPlane,
     OperatorAlign,
     OperatorDistribute,

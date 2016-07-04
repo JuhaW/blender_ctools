@@ -35,7 +35,6 @@ from mathutils import geometry as geom
 from . import utils
 from . import localutils
 from . import va
-from . import bmops
 from . import enums
 from . import funcs
 from . import grouping

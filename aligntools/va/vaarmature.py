@@ -196,66 +196,49 @@ def get_selected_bones(ob, mode=None):
         return [b for b in bones if b.select]
 
 
-### from source ###############################################################
-def mat3_to_vec_roll(mat, vec=None):
+def mat3_to_vec_roll(mat):
+    """blenkernel/intern/armature.c: mat3_to_vec_rollより"""
     mat = mat.to_3x3()
-    if vec:
-        #%mat = mat.copy()
-        #%mat[1][:] = vec[:]
-        mat.col[1] = vec
-    #%vecmat = vec_roll_to_mat3(mat[1], 0.0)
+
+    vec = mat.col[1].copy()
+
     vecmat = vec_roll_to_mat3(mat.col[1], 0.0)
-    vecmatinv = vecmat.inverted()
-    rollmat = vecmatinv * mat
-    #%roll = math.atan2(rollmat[2][0], rollmat[2][2])
+    rollmat = vecmat.inverted() * mat
     roll = math.atan2(rollmat.col[2][0], rollmat.col[2][2])
-    return roll
+
+    return vec, roll
 
 
 def vec_roll_to_mat3(vec, roll):
-    target = Vector([0, 1, 0])
+    """blenkernel/intern/armature.c: vec_roll_to_mat3より"""
+    THETA_THRESHOLD_NEGY = 1.0e-9
+    THETA_THRESHOLD_NEGY_CLOSE = 1.0e-5
+
     nor = vec.normalized()
-    axis = target.cross(nor)
-    if axis.dot(axis) > 1E-5:  # 0.00001:
-        axis.normalize()
-        #theta = angle_normalized_v3v3(target, nor)
-        theta = target.angle(nor)
-        # bMatrix = vec_rot_to_mat3(axis, theta)
-        bMatrix = Quaternion(axis, theta).to_matrix()
+
+    bMatrix = Matrix.Identity(3)
+
+    theta = 1.0 + nor[1]
+
+    if (theta > THETA_THRESHOLD_NEGY_CLOSE or
+            ((nor[0] or nor[2]) and theta > THETA_THRESHOLD_NEGY)):
+        bMatrix.col[0][1] = -nor[0]
+        bMatrix.col[1][0] = nor[0]
+        bMatrix.col[1][1] = nor[1]
+        bMatrix.col[1][2] = nor[2]
+        bMatrix.col[2][1] = -nor[2]
+        if theta > THETA_THRESHOLD_NEGY_CLOSE:
+            bMatrix.col[0][0] = 1 - nor[0] * nor[0] / theta
+            bMatrix.col[2][2] = 1 - nor[2] * nor[2] / theta
+            bMatrix.col[2][0] = bMatrix.col[0][2] = -nor[0] * nor[2] / theta
+        else:
+            theta = nor[0] * nor[0] + nor[2] * nor[2]
+            bMatrix.col[0][0] = (nor[0] + nor[2]) * (nor[0] - nor[2]) / -theta
+            bMatrix.col[2][2] = -bMatrix.col[0][0]
+            bMatrix.col[2][0] = bMatrix.col[0][2] = \
+                2.0 * nor[0] * nor[2] / theta
     else:
-        updown = 1.0 if target.dot(nor) > 0 else -1.0
-        bMatrix = Matrix([[updown, 0.0, 0.0],
-                          [0.0, updown, 0.0],
-                          [0.0,  0.0, 1.0]])
+        bMatrix.col[0][0] = bMatrix.col[1][1] = -1.0
 
-    #rMatrix = vec_rot_to_mat3(nor, roll)
     rMatrix = Quaternion(nor, roll).to_matrix()
-    mat = rMatrix * bMatrix
-    return mat
-
-'''
-# vam.axis_angle_to_quatで代用可能
-def vec_rot_to_mat3(vec, phi):
-    # rotation of phi radials around vec
-    mat = Matrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-
-    vx = vec[0]
-    vy = vec[1]
-    vz = vec[2]
-    vx2 = vx * vx
-    vy2 = vy * vy
-    vz2 = vz * vz
-    co = math.cos(phi)
-    si = math.sin(phi)
-
-    mat[0][0] = vx2 + co * (1.0 - vx2)
-    mat[0][1] = vx * vy * (1.0 - co) + vz * si
-    mat[0][2] = vz * vx * (1.0 - co) - vy * si
-    mat[1][0] = vx * vy * (1.0 - co) - vz * si
-    mat[1][1] = vy2 + co * (1.0 - vy2)
-    mat[1][2] = vy * vz * (1.0 - co) + vx * si
-    mat[2][0] = vz * vx * (1.0 - co) + vy * si
-    mat[2][1] = vy * vz * (1.0 - co) - vx * si
-    mat[2][2] = vz2 + co * (1.0 - vz2)
-    return mat
-'''
+    return rMatrix * bMatrix
