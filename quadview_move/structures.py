@@ -38,7 +38,7 @@
 import ctypes
 from ctypes import CDLL, Structure, Union, POINTER, addressof, cast, \
     c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
-    py_object, c_ssize_t, c_uint, c_int8, c_uint8, CFUNCTYPE
+    py_object, c_ssize_t, c_uint, c_int8, c_uint8, CFUNCTYPE, byref
 import numpy as np
 import platform
 import re
@@ -1914,11 +1914,11 @@ def context_py_dict_set_linux(context, py_dict):
 ###############################################################################
 class _Buffer_buf(ctypes.Union):
     _fields_ = [
-        ('*asbyte', ctypes.c_char),
-        ('*asshort', ctypes.c_short),
-        ('*asint', ctypes.c_int),
-        ('*asfloat', ctypes.c_float),
-        ('*asdouble', ctypes.c_double),
+        ('asbyte', ctypes.POINTER(ctypes.c_char)),
+        ('asshort', ctypes.POINTER(ctypes.c_short)),
+        ('asint', ctypes.POINTER(ctypes.c_int)),
+        ('asfloat', ctypes.POINTER(ctypes.c_float)),
+        ('asdouble', ctypes.POINTER(ctypes.c_double)),
 
         ('asvoid', ctypes.c_void_p),
     ]
@@ -1972,21 +1972,6 @@ def buffer_to_ndarray(buf):
 #     ]
 
 # 未使用
-'''
-class _PointerRNA_id(Structure):
-    _fields_ = [
-        ('data', c_void_p),
-    ]
-
-
-class PointerRNA(Structure):
-    _fields_ = [
-        ('id', _PointerRNA_id),
-        ('type', c_void_p),  # StructRNA
-        ('data', c_void_p),
-    ]
-
-
 def create_python_object(id_addr, type_name, addr):
     """アドレスからpythonオブジェクトを作成する。
     area = create_python_object(C.screen.as_pointer(), 'Area',
@@ -2006,6 +1991,19 @@ def create_python_object(id_addr, type_name, addr):
     :type addr: int
     :rtype object
     """
+
+    class _PointerRNA_id(Structure):
+        _fields_ = [
+            ('data', c_void_p),
+        ]
+
+    class PointerRNA(Structure):
+        _fields_ = [
+            ('id', _PointerRNA_id),
+            ('type', c_void_p),  # StructRNA
+            ('data', c_void_p),
+        ]
+
     if (not isinstance(id_addr, (int, type(None))) or
             not isinstance(type_name, str) or
             not isinstance(addr, int)):
@@ -2024,4 +2022,258 @@ def create_python_object(id_addr, type_name, addr):
     ptr = PointerRNA()
     RNA_pointer_create(c_void_p(id_addr), RNA_type, c_void_p(addr), byref(ptr))
     return pyrna_struct_CreatePyObject(byref(ptr))
-'''
+
+
+class SnapObjects:
+    """
+    使用例:
+    class Operator(bpy.types.Operator):
+        def modal(self, context, event):
+            mval = event.mouse_region_x, event.mouse_region_y
+            r = self.snap_objects.snap(context, mval, 'VERTEX')
+            if r:
+                # keys: 'location', 'normal', 'index', 'object'
+                # location,normalはworld座標
+                ...
+
+            # mesh等が更新されたらキャッシュ等を再生成
+            self.snap_objects.update()
+
+            # オペレーター終了時には開放を忘れない。
+            __del__で開放するようにしているが、context.modeの変更で落ちる為
+            手動で行う。
+            self.snap_objects.free()
+            return {'FINISHED'}
+
+        def invoke(self, context, event):
+            self.snap_objects = SnapObjects(context)
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+
+    このクラスを丸々コピペして動くようにcreate_python_object等を
+    メソッドにしている
+
+    """
+
+    # enum SnapSelect
+    SNAP_ALL = 0
+    SNAP_NOT_SELECTED = 1
+    SNAP_NOT_ACTIVE = 2
+
+    SNAP_MIN_DISTANCE = 30
+
+    SNAP_OBJECT_USE_CACHE = 1 << 0
+
+    # tool_settings.snap_mode
+    # SCE_SNAP_MODE_INCREMENT = 0
+    SCE_SNAP_MODE_VERTEX = 1
+    SCE_SNAP_MODE_EDGE = 2
+    SCE_SNAP_MODE_FACE = 3
+    # SCE_SNAP_MODE_VOLUME = 4
+    # SCE_SNAP_MODE_NODE_X = 5
+    # SCE_SNAP_MODE_NODE_Y = 6
+    # SCE_SNAP_MODE_NODE_XY = 7
+    # SCE_SNAP_MODE_GRID = 8
+
+    BM_ELEM_SELECT = 1 << 0
+    BM_ELEM_HIDDEN = 1 << 1
+
+    def __init__(self, context=None):
+        self.object_context = None
+        if context:
+            self.ensure(context)
+
+    def __del__(self):
+        self.free()
+
+    def snap_object_context_create_view3d(self, context):
+        import bpy
+        import ctypes as ct
+        cdll = ct.CDLL('')
+        func = cdll.ED_transform_snap_object_context_create_view3d
+        func.restype = ct.c_void_p
+
+        # area = context.area
+        # if not area:
+        #     raise ValueError('context.areaがNone')
+        # if area.type != 'VIEW_3D':
+        #     raise ValueError("context.areaが3DViewではない")
+
+        region = context.region
+        if not region:
+            raise ValueError('context.regionがNone')
+        if region.type != 'WINDOW':
+            raise ValueError("context.region.typeが'WINDOW'ではない")
+        ar = ct.c_void_p(region.as_pointer())
+
+        view3d = context.space_data
+        if not isinstance(view3d, bpy.types.SpaceView3D):
+            raise ValueError('context.space_dataがSpaceView3Dではない')
+        v3d = ct.c_void_p(view3d.as_pointer())
+
+        bl_main = ct.c_void_p(bpy.data.as_pointer())
+        scn = ct.c_void_p(context.scene.as_pointer())
+        object_context = func(bl_main, scn, self.SNAP_OBJECT_USE_CACHE, ar, v3d)
+        return ct.c_void_p(object_context)
+
+    def ensure(self, context):
+        if not self.object_context:
+            self.object_context = self.snap_object_context_create_view3d(
+                context)
+
+    def update(self, context):
+        if self.object_context:
+            self.free()
+        self.object_context = self.snap_object_context_create_view3d(context)
+
+    def free(self):
+        # 開放前にcontext.modeを切り替えてはならない。落ちる。
+        import ctypes as ct
+        cdll = ct.CDLL('')
+        if self.object_context:
+            cdll.ED_transform_snap_object_context_destroy(self.object_context)
+            self.object_context = None
+
+    def set_editmesh_callbacks(self):
+        # ED_transform_snap_object_context_set_editmesh_callbacks(
+        #     object_context,
+        #        (bool(*)(BMVert *, void *))
+        # BM_elem_cb_check_hflag_disabled,
+        # bm_edge_is_snap_target,
+        # bm_face_is_snap_target,
+        # SET_UINT_IN_POINTER((BM_ELEM_SELECT | BM_ELEM_HIDDEN)))
+
+        import ctypes as ct
+        cdll = ct.CDLL('')
+        func = cdll.ED_transform_snap_object_context_set_editmesh_callbacks
+        vfunc = ct.c_void_p(ct.addressof(cdll.BM_elem_cb_check_hflag_disabled))
+        # FIXME: efunc,ffuncはstatucで参照出来ない為このコードは動かない
+        efunc = ct.c_void_p(ct.addressof(cdll.bm_edge_is_snap_target))
+        ffunc = ct.c_void_p(ct.addressof(cdll.bm_face_is_snap_target))
+
+        user_data = ct.c_void_p(self.BM_ELEM_SELECT | self.BM_ELEM_HIDDEN)
+        func(self.object_context, vfunc, efunc, ffunc, user_data)
+
+    def create_python_object(self, id_addr, type_name, addr):
+        """アドレスからpythonオブジェクトを作成する。
+        area = create_python_object(C.screen.as_pointer(), 'Area',
+                                    C.area.as_pointer())
+        obj = create_python_object(C.active_object.as_pointer(), 'Object',
+                                   C.active_object.as_pointer())
+
+        :param id_addr: id_dataのアドレス。自身がIDオブジェクトならそれを指定、
+            そうでないなら所属するIDオブジェクトのアドレスを指定する。
+            AreaならScreen、ObjectならObjectのアドレスとなる。無い場合はNone。
+            正しく指定しないと予期しない動作を起こすので注意。
+        :type id_addr: int | None
+        :param type_name: 型名。'Area', 'Object' 等。
+            SpaceView3D等のSpaceのサブクラスは'Space'でよい。
+        :type type_name: str
+        :param addr: オブジェクトのアドレス。
+        :type addr: int
+        :rtype object
+        """
+
+        import ctypes as ct
+
+        class _PointerRNA_id(ct.Structure):
+            _fields_ = [
+                ('data', ct.c_void_p),
+            ]
+
+        class PointerRNA(ct.Structure):
+            _fields_ = [
+                ('id', _PointerRNA_id),
+                ('type', ct.c_void_p),  # StructRNA
+                ('data', ct.c_void_p),
+            ]
+
+        if (not isinstance(id_addr, (int, type(None))) or
+                not isinstance(type_name, str) or
+                not isinstance(addr, int)):
+            raise TypeError('引数の型が間違ってる。(int, str, int)')
+
+        cdll = ct.CDLL('')
+        RNA_pointer_create = cdll.RNA_pointer_create
+        RNA_pointer_create.restype = None
+        pyrna_struct_CreatePyObject = cdll.pyrna_struct_CreatePyObject
+        pyrna_struct_CreatePyObject.restype = ct.py_object
+        try:
+            RNA_type = getattr(cdll, 'RNA_' + type_name)
+        except AttributeError:
+            raise ValueError("型名が間違ってる。'{}'".format(type_name))
+
+        ptr = PointerRNA()
+        RNA_pointer_create(ct.c_void_p(id_addr), RNA_type, ct.c_void_p(addr),
+                           ct.byref(ptr))
+        return pyrna_struct_CreatePyObject(ct.byref(ptr))
+
+    def snap(self, context, mval, snap_element=None, snap_select='ALL',
+             dist_px=SNAP_MIN_DISTANCE):
+        import ctypes as ct
+        from mathutils import Vector
+
+        cdll = ct.CDLL('')
+
+        if not self.object_context:
+            self.ensure(context)
+
+        mval = (ct.c_float * 2)(*mval)
+        dist_px = ct.c_float(dist_px)
+        r_loc = (ct.c_float * 3)()
+        r_no = (ct.c_float * 3)()
+        r_index = ct.c_int()
+        r_ob = ct.c_void_p()
+        actob = context.active_object
+
+        class SnapObjectParams(ct.Structure):
+            _fields_ = [
+                ('snap_select', ct.c_char),
+                ('use_object_edit_cage', ct.c_ubyte),  # unsigned int
+            ]
+
+        if snap_select not in {'ALL', 'NOT_SELECTED', 'NOT_ACTIVE'}:
+            raise ValueError(
+                "snap_select not in {'ALL', 'NOT_SELECTED', 'NOT_ACTIVE'}")
+        d = {'ALL': self.SNAP_ALL,
+             'NOT_SELECTED': self.SNAP_NOT_SELECTED,
+             'SNAP_NOT_ACTIVE': self.SNAP_NOT_ACTIVE
+             }
+        snap_select = d[snap_select]
+        params = SnapObjectParams(snap_select, actob and actob.mode == 'EDIT')
+
+        # self.set_editmesh_callbacks()
+
+        if snap_element:
+            snap_mode = snap_element
+        else:
+            snap_mode = context.tool_settings.snap_element
+        if snap_mode not in {'VERTEX', 'EDGE', 'FACE'}:
+            if snap_element:
+                raise ValueError(
+                    "snap_element not in {'VERTEX', 'EDGE', 'FACE'}")
+            else:
+                return None
+        d = {
+            # 'INCREMENT': SCE_SNAP_MODE_INCREMENT,
+            'VERTEX': self.SCE_SNAP_MODE_VERTEX,
+            'EDGE': self.SCE_SNAP_MODE_EDGE,
+            'FACE': self.SCE_SNAP_MODE_FACE,
+            # 'VOLUME': SCE_SNAP_MODE_VOLUME,
+        }
+        snap_to = d[snap_mode]
+
+        found = cdll.ED_transform_snap_object_project_view3d_ex(
+            self.object_context, snap_to, ct.byref(params), mval,
+            ct.byref(dist_px), None, r_loc, r_no, ct.byref(r_index),
+            ct.byref(r_ob),
+        )
+
+        if found:
+            ob = self.create_python_object(r_ob.value, 'Object', r_ob.value)
+            return {'location': Vector(r_loc),
+                    'normal': Vector(r_no),
+                    'index': r_index.value,
+                    'object': ob}
+        else:
+            return None

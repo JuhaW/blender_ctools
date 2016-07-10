@@ -2401,9 +2401,11 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 else:
                     elems_key.append(repr(ele))
             key = (mode, tuple(elems_key))
-            dm_type = get_dm(mesh).type
-            data['target'] = [key, mode, dm_type, verts, edges, faces,
-                              centers]
+            dm = get_dm(mesh)
+            if dm:
+                dm_type = get_dm(mesh).type
+                data['target'] = [key, mode, dm_type, verts, edges, faces,
+                                  centers]
 
         data['object_is_updated'] = False
 
@@ -2433,13 +2435,14 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                     break
 
         dm = get_dm(mesh)
-        data['dm_address'] = addressof(dm) if dm else None
-        data['dm_num_elems'] = [get_dm_attr(mesh, dm, 'num_verts'),
-                                get_dm_attr(mesh, dm, 'num_edges'),
-                                get_dm_attr(mesh, dm, 'num_faces'),
-                                get_dm_attr(mesh, dm, 'num_loops'),]
-        data['target_prev'] = data['target']
-        data['area_prev'] = area.as_pointer()
+        if dm:
+            data['dm_address'] = addressof(dm) if dm else None
+            data['dm_num_elems'] = [get_dm_attr(mesh, dm, 'num_verts'),
+                                    get_dm_attr(mesh, dm, 'num_edges'),
+                                    get_dm_attr(mesh, dm, 'num_faces'),
+                                    get_dm_attr(mesh, dm, 'num_loops'),]
+            data['target_prev'] = data['target']
+            data['area_prev'] = area.as_pointer()
 
         return {'PASS_THROUGH'}
 
